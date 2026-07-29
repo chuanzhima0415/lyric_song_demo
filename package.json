@@ -6,7 +6,7 @@
     "start": "node server.js",
     "dev": "node server.js",
     "check": "node --check server.js",
-    "test": "npm run check"
+    "test": "node --test && npm run check"
   },
   "engines": {
     "node": ">=20"
