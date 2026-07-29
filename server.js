@@ -100,7 +100,9 @@ function writeShares(shares) {
 }
 
 function publicBaseUrl(req) {
-  return process.env.PUBLIC_BASE_URL?.replace(/\/$/, "") || `${req.protocol}://${req.get("host")}`;
+  return process.env.RENDER_EXTERNAL_URL?.replace(/\/$/, "")
+    || process.env.PUBLIC_BASE_URL?.replace(/\/$/, "")
+    || `${req.protocol}://${req.get("host")}`;
 }
 
 function escapeHtml(value = "") {
