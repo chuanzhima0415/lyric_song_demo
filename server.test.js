@@ -99,6 +99,33 @@ test("创建接口拒绝非法密码配置", async () => {
   }
 });
 
+test("Render 环境始终使用正式服务域名生成分享链接", async () => {
+  const previousRenderExternalUrl = process.env.RENDER_EXTERNAL_URL;
+  const previousPublicBaseUrl = process.env.PUBLIC_BASE_URL;
+  process.env.RENDER_EXTERNAL_URL = "https://melodyflow-demo.onrender.com/";
+  process.env.PUBLIC_BASE_URL = "https://offline-tunnel.ngrok-free.dev";
+
+  try {
+    const response = await postJson("/api/shares", {
+      title: "正式域名分享",
+      audioUrl: "https://example.com/audio.mp3",
+      accessType: "public_link"
+    });
+
+    assert.equal(response.status, 200);
+    const { candidates } = await response.json();
+    assert.equal(
+      candidates[0].url,
+      `https://melodyflow-demo.onrender.com/s/${candidates[0].token}`
+    );
+  } finally {
+    if (previousRenderExternalUrl === undefined) delete process.env.RENDER_EXTERNAL_URL;
+    else process.env.RENDER_EXTERNAL_URL = previousRenderExternalUrl;
+    if (previousPublicBaseUrl === undefined) delete process.env.PUBLIC_BASE_URL;
+    else process.env.PUBLIC_BASE_URL = previousPublicBaseUrl;
+  }
+});
+
 test("密码分享只在有效 Cookie 下返回内容", async () => {
   const accessCode = "安全42ab";
   const createResponse = await postJson("/api/shares", sharePayload({
