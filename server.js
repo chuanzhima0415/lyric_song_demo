@@ -16,7 +16,18 @@ fs.mkdirSync(uploadsDir, { recursive: true });
 fs.mkdirSync(dataDir, { recursive: true });
 
 app.use(express.json({ limit: "25mb" }));
-app.use(express.static(__dirname));
+app.use("/uploads", express.static(uploadsDir, {
+  dotfiles: "deny",
+  index: false
+}));
+
+app.get("/", (req, res) => {
+  res.sendFile(path.join(__dirname, "index.html"));
+});
+
+app.get("/health", (req, res) => {
+  res.json({ status: "ok" });
+});
 
 function readShares() {
   try {
@@ -30,8 +41,12 @@ function writeShares(shares) {
   fs.writeFileSync(sharesFile, JSON.stringify(shares, null, 2));
 }
 
+function configuredBaseUrl() {
+  return (process.env.PUBLIC_BASE_URL || process.env.RENDER_EXTERNAL_URL || "").replace(/\/$/, "");
+}
+
 function publicBaseUrl(req) {
-  return process.env.PUBLIC_BASE_URL?.replace(/\/$/, "") || `${req.protocol}://${req.get("host")}`;
+  return configuredBaseUrl() || `${req.protocol}://${req.get("host")}`;
 }
 
 function escapeHtml(value = "") {
@@ -202,8 +217,8 @@ app.post("/api/suno/generate", async (req, res, next) => {
     if (isDescriptionMode && cleanPrompt.length > 500) return res.status(400).json({ message: "歌曲描述最多支持 500 个字符" });
     if (!isDescriptionMode && (!cleanTitle || !cleanStyle)) return res.status(400).json({ message: "歌词、标题和风格不能为空" });
 
-    const publicBaseUrl = process.env.PUBLIC_BASE_URL?.replace(/\/$/, "");
-    const effectiveCallback = callbackUrl || (publicBaseUrl ? `${publicBaseUrl}/api/suno/callback` : process.env.SUNO_CALLBACK_URL);
+    const baseUrl = configuredBaseUrl();
+    const effectiveCallback = callbackUrl || (baseUrl ? `${baseUrl}/api/suno/callback` : process.env.SUNO_CALLBACK_URL);
     if (!effectiveCallback) {
       return res.status(400).json({ message: "请填写公网 callbackUrl，或在 .env 配置 PUBLIC_BASE_URL / SUNO_CALLBACK_URL" });
     }
@@ -252,10 +267,10 @@ app.post("/api/suno/add-instrumental", async (req, res, next) => {
       return res.status(400).json({ message: "哼唱录音太短，请录制至少 12 秒，推荐 15-30 秒" });
     }
 
-    const publicBaseUrl = process.env.PUBLIC_BASE_URL?.replace(/\/$/, "");
-    const effectiveCallback = callbackUrl || (publicBaseUrl ? `${publicBaseUrl}/api/suno/callback` : process.env.SUNO_CALLBACK_URL);
-    if (!publicBaseUrl) {
-      return res.status(400).json({ message: "请在 .env 配置 PUBLIC_BASE_URL，用于公开访问本地录音文件" });
+    const baseUrl = configuredBaseUrl();
+    const effectiveCallback = callbackUrl || (baseUrl ? `${baseUrl}/api/suno/callback` : process.env.SUNO_CALLBACK_URL);
+    if (!baseUrl) {
+      return res.status(400).json({ message: "请配置 PUBLIC_BASE_URL；在 Render 上会自动使用 RENDER_EXTERNAL_URL" });
     }
     if (!effectiveCallback) {
       return res.status(400).json({ message: "请填写公网 callbackUrl，或在 .env 配置 PUBLIC_BASE_URL / SUNO_CALLBACK_URL" });
@@ -272,7 +287,7 @@ app.post("/api/suno/add-instrumental", async (req, res, next) => {
     fs.writeFileSync(filePath, audioBuffer);
 
     const payload = {
-      uploadUrl: `${publicBaseUrl}/uploads/${filename}`,
+      uploadUrl: `${baseUrl}/uploads/${filename}`,
       title,
       negativeTags,
       tags,
