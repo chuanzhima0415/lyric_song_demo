@@ -11,23 +11,63 @@ const callbackCache = new Map();
 const uploadsDir = path.join(__dirname, "uploads");
 const dataDir = path.join(__dirname, "data");
 const sharesFile = path.join(dataDir, "shares.json");
+const DASHSCOPE_MULTIMODAL_URL = "https://dashscope.aliyuncs.com/api/v1/services/aigc/multimodal-generation/generation";
+const DASHSCOPE_ASR_URL = "https://dashscope.aliyuncs.com/api/v1/services/audio/asr/transcription";
+const DASHSCOPE_TASK_URL = "https://dashscope.aliyuncs.com/api/v1/tasks";
+const IMAGE_CAPTION_PROMPT = `你是一名音乐创作策划。请理解用户上传的图片，并将其转换为可直接输入 AI 作曲模型的音乐创作 Caption。
+
+你的任务不是简单描述图片内容，而是提取其中适合音乐创作的信息，包括：
+
+- 核心场景；
+- 主要情绪；
+- 可能的故事主题；
+- 音乐风格；
+- 速度与能量；
+- 配器方向；
+- 歌词意象。
+
+## 规则
+
+1. 只能基于图片可见内容分析，不要虚构人物身份、地点或真实背景。
+2. 可以做合理的情绪和故事联想，但不要写成确定事实。
+3. 不要输出精确 BPM、调式、和弦等复杂乐理。
+4. 不要指定模仿具体歌手、乐队或歌曲。
+5. 音乐风格、情绪、速度和配器需要保持一致。
+6. 图片内容较少时，优先分析色彩、光影、构图和氛围，不要强行编造故事。
+7. 图片含有文字时，可提取其中最核心的表达作为歌曲主题或歌词灵感。
+
+## 输出格式
+
+严格输出合法 JSON，不要输出额外解释或 Markdown 代码块。
+
+{
+  "visual_summary": "图片核心画面，一句话概括",
+  "story_inspiration": "适合歌曲表达的故事或主题",
+  "mood": ["情绪1", "情绪2", "情绪3"],
+  "energy": "低 / 中低 / 中 / 中高 / 高",
+  "tempo_feel": "慢速 / 中慢速 / 中速 / 中速偏快 / 快速",
+  "music_style": ["风格1", "风格2"],
+  "instrumentation": ["配器1", "配器2", "配器3"],
+  "vocal_direction": "适合的演唱情绪；若更适合纯音乐则填写纯音乐",
+  "lyric_keywords": ["关键词1", "关键词2", "关键词3", "关键词4"],
+  "music_caption": "可直接输入作曲模型的中文音乐指令"
+}
+
+## music_caption 要求
+
+- 80～150 个汉字；
+- 包含主题、情绪、风格、速度感、主要配器和歌曲发展；
+- 不出现字段名称；
+- 不解释分析过程；
+- 不指定精确 BPM；
+- 不模仿具体音乐人；
+- 语言简洁、自然，可直接用于生成音乐。`;
 
 fs.mkdirSync(uploadsDir, { recursive: true });
 fs.mkdirSync(dataDir, { recursive: true });
 
 app.use(express.json({ limit: "25mb" }));
-app.use("/uploads", express.static(uploadsDir, {
-  dotfiles: "deny",
-  index: false
-}));
-
-app.get("/", (req, res) => {
-  res.sendFile(path.join(__dirname, "index.html"));
-});
-
-app.get("/health", (req, res) => {
-  res.json({ status: "ok" });
-});
+app.use(express.static(__dirname));
 
 function readShares() {
   try {
@@ -41,12 +81,8 @@ function writeShares(shares) {
   fs.writeFileSync(sharesFile, JSON.stringify(shares, null, 2));
 }
 
-function configuredBaseUrl() {
-  return (process.env.PUBLIC_BASE_URL || process.env.RENDER_EXTERNAL_URL || "").replace(/\/$/, "");
-}
-
 function publicBaseUrl(req) {
-  return configuredBaseUrl() || `${req.protocol}://${req.get("host")}`;
+  return process.env.PUBLIC_BASE_URL?.replace(/\/$/, "") || `${req.protocol}://${req.get("host")}`;
 }
 
 function escapeHtml(value = "") {
@@ -186,6 +222,106 @@ function requireApiKey() {
   return process.env.SUNO_API_KEY;
 }
 
+function requireDashScopeApiKey() {
+  if (!process.env.DASHSCOPE_API_KEY) {
+    const error = new Error("服务端未配置 DASHSCOPE_API_KEY");
+    error.status = 500;
+    throw error;
+  }
+  return process.env.DASHSCOPE_API_KEY;
+}
+
+function parseJsonText(text) {
+  const clean = String(text || "").trim().replace(/^```json\s*/i, "").replace(/^```\s*/i, "").replace(/```$/i, "").trim();
+  try {
+    return JSON.parse(clean);
+  } catch {
+    const match = clean.match(/\{[\s\S]*\}/);
+    if (!match) throw new Error("图片理解模型没有返回合法 JSON");
+    return JSON.parse(match[0]);
+  }
+}
+
+function sleep(ms) {
+  return new Promise((resolve) => setTimeout(resolve, ms));
+}
+
+function audioExtension(mimeType = "") {
+  if (mimeType.includes("wav")) return "wav";
+  if (mimeType.includes("mpeg") || mimeType.includes("mp3")) return "mp3";
+  if (mimeType.includes("ogg")) return "ogg";
+  if (mimeType.includes("mp4") || mimeType.includes("m4a")) return "m4a";
+  return "webm";
+}
+
+function saveAudioDataUrl({ audioBase64, mimeType, prefix }) {
+  const cleanBase64 = String(audioBase64 || "").includes(",") ? String(audioBase64).split(",").pop() : audioBase64;
+  const audioBuffer = Buffer.from(cleanBase64 || "", "base64");
+  if (!audioBuffer.length) {
+    const error = new Error("录音内容为空");
+    error.status = 400;
+    throw error;
+  }
+  if (audioBuffer.length > 20 * 1024 * 1024) {
+    const error = new Error("录音文件过大，请控制在 20MB 以内");
+    error.status = 413;
+    throw error;
+  }
+  const filename = `${prefix}-${Date.now()}-${Math.random().toString(16).slice(2)}.${audioExtension(mimeType)}`;
+  const filePath = path.join(uploadsDir, filename);
+  fs.writeFileSync(filePath, audioBuffer);
+  return filename;
+}
+
+async function submitAsrTask(fileUrl) {
+  const response = await fetch(DASHSCOPE_ASR_URL, {
+    method: "POST",
+    headers: {
+      Authorization: `Bearer ${requireDashScopeApiKey()}`,
+      "Content-Type": "application/json",
+      "X-DashScope-Async": "enable"
+    },
+    body: JSON.stringify({
+      model: "fun-asr",
+      input: { file_urls: [fileUrl] },
+      parameters: { channel_id: [0] }
+    })
+  });
+  const body = await response.json().catch(() => ({}));
+  if (!response.ok || body.code) {
+    const error = new Error(body.message || body.msg || `DashScope 语音识别任务提交失败：${response.status}`);
+    error.status = response.status >= 400 ? response.status : 502;
+    error.details = body;
+    throw error;
+  }
+  return body.output?.task_id;
+}
+
+async function fetchAsrTask(taskId) {
+  const response = await fetch(`${DASHSCOPE_TASK_URL}/${encodeURIComponent(taskId)}`, {
+    headers: { Authorization: `Bearer ${requireDashScopeApiKey()}` }
+  });
+  const body = await response.json().catch(() => ({}));
+  if (!response.ok || body.code) {
+    const error = new Error(body.message || body.msg || `DashScope 语音识别任务查询失败：${response.status}`);
+    error.status = response.status >= 400 ? response.status : 502;
+    error.details = body;
+    throw error;
+  }
+  return body.output || {};
+}
+
+async function readTranscriptionText(transcriptionUrl) {
+  const response = await fetch(transcriptionUrl);
+  if (!response.ok) throw new Error(`语音识别结果下载失败：${response.status}`);
+  const body = await response.json();
+  return (body.transcripts || [])
+    .map((transcript) => transcript.text)
+    .filter(Boolean)
+    .join("\n")
+    .trim();
+}
+
 async function sunoFetch(url, options = {}) {
   const response = await fetch(url, {
     ...options,
@@ -217,8 +353,8 @@ app.post("/api/suno/generate", async (req, res, next) => {
     if (isDescriptionMode && cleanPrompt.length > 500) return res.status(400).json({ message: "歌曲描述最多支持 500 个字符" });
     if (!isDescriptionMode && (!cleanTitle || !cleanStyle)) return res.status(400).json({ message: "歌词、标题和风格不能为空" });
 
-    const baseUrl = configuredBaseUrl();
-    const effectiveCallback = callbackUrl || (baseUrl ? `${baseUrl}/api/suno/callback` : process.env.SUNO_CALLBACK_URL);
+    const publicBaseUrl = process.env.PUBLIC_BASE_URL?.replace(/\/$/, "");
+    const effectiveCallback = callbackUrl || (publicBaseUrl ? `${publicBaseUrl}/api/suno/callback` : process.env.SUNO_CALLBACK_URL);
     if (!effectiveCallback) {
       return res.status(400).json({ message: "请填写公网 callbackUrl，或在 .env 配置 PUBLIC_BASE_URL / SUNO_CALLBACK_URL" });
     }
@@ -267,27 +403,19 @@ app.post("/api/suno/add-instrumental", async (req, res, next) => {
       return res.status(400).json({ message: "哼唱录音太短，请录制至少 12 秒，推荐 15-30 秒" });
     }
 
-    const baseUrl = configuredBaseUrl();
-    const effectiveCallback = callbackUrl || (baseUrl ? `${baseUrl}/api/suno/callback` : process.env.SUNO_CALLBACK_URL);
-    if (!baseUrl) {
-      return res.status(400).json({ message: "请配置 PUBLIC_BASE_URL；在 Render 上会自动使用 RENDER_EXTERNAL_URL" });
+    const publicBaseUrl = process.env.PUBLIC_BASE_URL?.replace(/\/$/, "");
+    const effectiveCallback = callbackUrl || (publicBaseUrl ? `${publicBaseUrl}/api/suno/callback` : process.env.SUNO_CALLBACK_URL);
+    if (!publicBaseUrl) {
+      return res.status(400).json({ message: "请在 .env 配置 PUBLIC_BASE_URL，用于公开访问本地录音文件" });
     }
     if (!effectiveCallback) {
       return res.status(400).json({ message: "请填写公网 callbackUrl，或在 .env 配置 PUBLIC_BASE_URL / SUNO_CALLBACK_URL" });
     }
 
-    const cleanBase64 = audioBase64.includes(",") ? audioBase64.split(",").pop() : audioBase64;
-    const audioBuffer = Buffer.from(cleanBase64, "base64");
-    if (!audioBuffer.length) return res.status(400).json({ message: "录音内容为空" });
-    if (audioBuffer.length > 20 * 1024 * 1024) return res.status(413).json({ message: "录音文件过大，请控制在 20MB 以内" });
-
-    const extension = mimeType.includes("wav") ? "wav" : mimeType.includes("mpeg") || mimeType.includes("mp3") ? "mp3" : "webm";
-    const filename = `hum-${Date.now()}-${Math.random().toString(16).slice(2)}.${extension}`;
-    const filePath = path.join(uploadsDir, filename);
-    fs.writeFileSync(filePath, audioBuffer);
+    const filename = saveAudioDataUrl({ audioBase64, mimeType, prefix: "hum" });
 
     const payload = {
-      uploadUrl: `${baseUrl}/uploads/${filename}`,
+      uploadUrl: `${publicBaseUrl}/uploads/${filename}`,
       title,
       negativeTags,
       tags,
@@ -304,6 +432,43 @@ app.post("/api/suno/add-instrumental", async (req, res, next) => {
       body: JSON.stringify(payload)
     });
     res.json({ taskId: body.data?.taskId, uploadUrl: payload.uploadUrl });
+  } catch (error) { next(error); }
+});
+
+app.post("/api/speech/transcribe", async (req, res, next) => {
+  try {
+    const { audioBase64, mimeType = "audio/webm", durationSeconds = 0 } = req.body || {};
+    if (!audioBase64) return res.status(400).json({ message: "audioBase64 不能为空" });
+    if (Number(durationSeconds) > 0 && Number(durationSeconds) < 1) {
+      return res.status(400).json({ message: "语音太短，请至少口述 1 秒" });
+    }
+
+    const baseUrl = publicBaseUrl(req);
+    const filename = saveAudioDataUrl({ audioBase64, mimeType, prefix: "speech" });
+    const fileUrl = `${baseUrl}/uploads/${filename}`;
+    const taskId = await submitAsrTask(fileUrl);
+    if (!taskId) throw new Error("语音识别接口未返回 task_id");
+
+    let output = null;
+    for (let attempt = 0; attempt < 30; attempt += 1) {
+      await sleep(attempt < 2 ? 1000 : 2000);
+      output = await fetchAsrTask(taskId);
+      if (["SUCCEEDED", "FAILED", "CANCELED"].includes(output.task_status)) break;
+    }
+
+    if (!output || output.task_status !== "SUCCEEDED") {
+      return res.status(202).json({ taskId, status: output?.task_status || "PENDING", fileUrl, message: "语音识别仍在处理中，请稍后重试" });
+    }
+
+    const result = output.results?.find((item) => item.subtask_status === "SUCCEEDED" && item.transcription_url);
+    if (!result) {
+      const failed = output.results?.find((item) => item.subtask_status === "FAILED");
+      return res.status(502).json({ message: failed?.message || "语音识别失败", taskId, status: output.task_status });
+    }
+
+    const text = await readTranscriptionText(result.transcription_url);
+    if (!text) return res.status(502).json({ message: "语音识别结果为空", taskId, status: output.task_status });
+    res.json({ text, taskId, status: output.task_status, fileUrl });
   } catch (error) { next(error); }
 });
 
@@ -332,6 +497,72 @@ app.get("/api/suno/tasks/:taskId", async (req, res, next) => {
       tracks,
       callback: callbackCache.get(taskId) || null
     });
+  } catch (error) { next(error); }
+});
+
+app.post("/api/suno/timestamped-lyrics", async (req, res, next) => {
+  try {
+    const { taskId, audioId } = req.body || {};
+    if (!taskId || !audioId) return res.status(400).json({ message: "taskId 和 audioId 不能为空" });
+
+    const body = await sunoFetch(`${SUNO_BASE_URL}/generate/get-timestamped-lyrics`, {
+      method: "POST",
+      body: JSON.stringify({ taskId, audioId })
+    });
+
+    res.json({
+      alignedWords: body.data?.alignedWords || [],
+      waveformData: body.data?.waveformData || [],
+      hootCer: body.data?.hootCer,
+      isStreamed: body.data?.isStreamed
+    });
+  } catch (error) { next(error); }
+});
+
+app.post("/api/image-caption", async (req, res, next) => {
+  try {
+    const { imageDataUrl } = req.body || {};
+    if (!imageDataUrl || !/^data:image\/(jpeg|jpg|png|webp);base64,/i.test(imageDataUrl)) {
+      return res.status(400).json({ message: "请上传 jpg、png 或 webp 图片" });
+    }
+    if (Buffer.byteLength(imageDataUrl, "utf8") > 8 * 1024 * 1024) {
+      return res.status(413).json({ message: "图片过大，请上传 6MB 以内图片" });
+    }
+
+    const response = await fetch(DASHSCOPE_MULTIMODAL_URL, {
+      method: "POST",
+      headers: {
+        Authorization: `Bearer ${requireDashScopeApiKey()}`,
+        "Content-Type": "application/json"
+      },
+      body: JSON.stringify({
+        model: "qwen3.7-flash",
+        input: {
+          messages: [
+            { role: "system", content: IMAGE_CAPTION_PROMPT },
+            {
+              role: "user",
+              content: [
+                { image: imageDataUrl },
+                { text: "请基于这张图片输出符合要求的音乐创作 JSON。" }
+              ]
+            }
+          ]
+        }
+      })
+    });
+    const body = await response.json().catch(() => ({}));
+    if (!response.ok || body.code) {
+      const error = new Error(body.message || body.msg || `DashScope 图片理解失败：${response.status}`);
+      error.status = response.status >= 400 ? response.status : 502;
+      error.details = body;
+      throw error;
+    }
+    const content = body.output?.choices?.[0]?.message?.content;
+    const text = Array.isArray(content) ? content.find((item) => item.text)?.text : content;
+    const caption = parseJsonText(text);
+    if (!caption.music_caption) throw new Error("图片理解结果缺少 music_caption");
+    res.json({ caption, rawText: text });
   } catch (error) { next(error); }
 });
 

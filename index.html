@@ -554,7 +554,13 @@
         height: calc(var(--h) * 1px);
         min-height: 7px;
         border-radius: 999px;
+        background: #ded8ff;
+        transition: background .18s ease, opacity .18s ease, transform .18s ease;
+      }
+
+      .bar.played {
         background: linear-gradient(180deg, #8d63ff, #693fff);
+        opacity: 1;
       }
 
       .bar.fade {
@@ -564,21 +570,24 @@
       .playhead {
         position: absolute;
         top: -8px;
-        left: 55%;
+        left: var(--progress, 0%);
         width: 2px;
         height: 75px;
         background: #1a1d2b;
+        transform: translateX(-1px);
+        transition: left .12s linear;
       }
 
       .time-bubble {
         position: absolute;
         top: -34px;
-        left: calc(55% - 50px);
+        left: clamp(0px, calc(var(--progress, 0%) - 50px), calc(100% - 100px));
         padding: 7px 10px;
         color: #ffffff;
         background: #1a1d2b;
         border-radius: 5px;
         font-size: 14px;
+        transition: left .12s linear;
       }
 
       .time-bubble::after {
@@ -658,6 +667,17 @@
         left: 42%;
       }
 
+      .progress-slider,
+      .volume-slider {
+        width: 100%;
+        accent-color: var(--purple);
+        cursor: pointer;
+      }
+
+      .native-audio {
+        display: none;
+      }
+
       .lyrics {
         margin-top: 34px;
       }
@@ -675,12 +695,43 @@
       }
 
       .lyric-lines {
-        display: grid;
-        grid-template-columns: 1fr 1fr;
-        gap: 36px;
-        padding-top: 22px;
+        display: flex;
+        min-height: 300px;
+        flex-direction: column;
+        align-items: center;
+        justify-content: center;
+        gap: 14px;
+        padding: 30px 16px 18px;
         color: #495064;
         line-height: 1.85;
+        text-align: center;
+      }
+
+      .lyric-line {
+        color: #c8ccd8;
+        font-size: 18px;
+        font-weight: 700;
+        cursor: pointer;
+        transition: color .25s ease, font-size .25s ease, opacity .25s ease, transform .25s ease;
+      }
+
+      .lyric-line:hover {
+        color: #7b54ff;
+      }
+
+      .lyric-line.past {
+        opacity: .45;
+      }
+
+      .lyric-line.active {
+        color: var(--purple);
+        font-size: 30px;
+        opacity: 1;
+        transform: scale(1.02);
+      }
+
+      .lyric-line.future {
+        opacity: .55;
       }
 
       .expand {
@@ -880,6 +931,91 @@
         border-radius: 8px;
       }
       .record-panel.show { display: grid; }
+      .speech-panel {
+        display: none;
+        grid-template-columns: minmax(0, 1fr) auto;
+        gap: 14px;
+        align-items: center;
+        margin-top: 16px;
+        padding: 14px;
+        color: #4c5264;
+        background: #f7fbff;
+        border: 1px solid #cfe3ff;
+        border-radius: 8px;
+      }
+      .speech-panel.show { display: grid; }
+      .speech-copy strong {
+        display: block;
+        margin-bottom: 4px;
+        color: #2d3040;
+      }
+      .speech-copy span {
+        color: #73798b;
+        font-size: 14px;
+      }
+      .speech-audio {
+        grid-column: 1 / -1;
+        width: 100%;
+      }
+      .speech-text {
+        grid-column: 1 / -1;
+        min-height: 72px;
+        margin: 0;
+        padding: 10px;
+        color: #4c5264;
+        background: #fff;
+        border: 1px solid var(--line);
+        border-radius: 8px;
+        line-height: 1.55;
+        white-space: pre-wrap;
+      }
+      .image-panel {
+        display: none;
+        grid-template-columns: 132px minmax(0, 1fr);
+        gap: 16px;
+        align-items: start;
+        margin-top: 16px;
+        padding: 14px;
+        color: #4c5264;
+        background: #fbf9ff;
+        border: 1px solid #ded6ff;
+        border-radius: 8px;
+      }
+      .image-panel.show { display: grid; }
+      .image-preview {
+        width: 132px;
+        aspect-ratio: 1;
+        object-fit: cover;
+        background: #f1f2f8;
+        border: 1px solid var(--line);
+        border-radius: 8px;
+      }
+      .image-caption-copy {
+        display: grid;
+        gap: 8px;
+        min-width: 0;
+      }
+      .image-caption-copy strong {
+        color: #2d3040;
+      }
+      .image-caption-copy p {
+        margin: 0;
+        color: #6f7688;
+        line-height: 1.55;
+      }
+      .image-json {
+        max-height: 132px;
+        overflow: auto;
+        margin: 0;
+        padding: 10px;
+        color: #4c5264;
+        background: #fff;
+        border: 1px solid var(--line);
+        border-radius: 8px;
+        font-size: 12px;
+        line-height: 1.5;
+        white-space: pre-wrap;
+      }
       .record-copy strong {
         display: block;
         margin-bottom: 4px;
@@ -1383,8 +1519,8 @@
           <h2 class="section-title">1. 输入你的灵感</h2>
           <div class="tools">
             <button class="tool-button selected"><svg class="icon" viewBox="0 0 24 24"><path d="M4 7V5h16v2M12 5v14M9 19h6" /></svg>文字输入</button>
-            <button class="tool-button"><svg class="icon" viewBox="0 0 24 24"><rect x="3" y="5" width="18" height="14" rx="2" /><circle cx="8.5" cy="10.5" r="1.5" /><path d="m21 15-5-5L5 19" /></svg>图片上传</button>
-            <button class="tool-button"><svg class="icon" viewBox="0 0 24 24"><path d="M12 3a3 3 0 0 0-3 3v6a3 3 0 0 0 6 0V6a3 3 0 0 0-3-3z" /><path d="M19 10v2a7 7 0 0 1-14 0v-2M12 19v3M8 22h8" /></svg>语音口述</button>
+            <button id="imageUploadButton" class="tool-button" type="button"><svg class="icon" viewBox="0 0 24 24"><rect x="3" y="5" width="18" height="14" rx="2" /><circle cx="8.5" cy="10.5" r="1.5" /><path d="m21 15-5-5L5 19" /></svg>图片上传</button>
+            <button id="speechRecordButton" class="tool-button" type="button"><svg class="icon" viewBox="0 0 24 24"><path d="M12 3a3 3 0 0 0-3 3v6a3 3 0 0 0 6 0V6a3 3 0 0 0-3-3z" /><path d="M19 10v2a7 7 0 0 1-14 0v-2M12 19v3M8 22h8" /></svg><span>语音口述</span></button>
             <button id="humRecordButton" class="tool-button" type="button"><svg class="icon" viewBox="0 0 24 24"><path d="M9 18V5l12-2v13" /><circle cx="6" cy="18" r="3" /></svg><span>哼唱录音</span></button>
           </div>
           <div class="prompt-box">
@@ -1419,6 +1555,24 @@
             </div>
             <button id="clearRecordingButton" class="secondary" type="button">清除录音</button>
             <audio id="recordPreview" class="record-audio" controls preload="metadata"></audio>
+          </div>
+          <div id="speechPanel" class="speech-panel" aria-live="polite">
+            <div class="speech-copy">
+              <strong id="speechTitle">语音口述未开始</strong>
+              <span id="speechStatus">点击“语音口述”开始，再点击一次结束录音并转文字。</span>
+            </div>
+            <button id="clearSpeechButton" class="secondary" type="button">清除口述</button>
+            <audio id="speechPreview" class="speech-audio" controls preload="metadata"></audio>
+            <pre id="speechText" class="speech-text"></pre>
+          </div>
+          <input id="imageInput" type="file" accept="image/png,image/jpeg,image/webp" hidden />
+          <div id="imagePanel" class="image-panel" aria-live="polite">
+            <img id="imagePreview" class="image-preview" alt="上传图片预览" />
+            <div class="image-caption-copy">
+              <strong id="imageCaptionTitle">图片尚未分析</strong>
+              <p id="imageCaptionText">上传图片或直接粘贴剪切板图片后，会自动生成音乐创作描述，并用于“基于描述”生成歌曲。</p>
+              <pre id="imageCaptionJson" class="image-json"></pre>
+            </div>
           </div>
           <div class="style-row">
             <div>
@@ -1466,7 +1620,7 @@
                   <span class="tag">希望</span>
                 </div>
                 <div class="wave-wrap">
-                  <div class="time-bubble">01:24 / 03:28</div>
+                  <div id="timeBubble" class="time-bubble">00:00 / --:--</div>
                   <div class="playhead"></div>
                   <div class="wave" aria-hidden="true">
                     <span class="bar" style="--h:13"></span><span class="bar" style="--h:20"></span><span class="bar" style="--h:25"></span><span class="bar" style="--h:18"></span><span class="bar" style="--h:34"></span><span class="bar" style="--h:15"></span><span class="bar" style="--h:22"></span><span class="bar" style="--h:28"></span><span class="bar" style="--h:17"></span><span class="bar" style="--h:32"></span><span class="bar" style="--h:12"></span><span class="bar" style="--h:27"></span><span class="bar" style="--h:39"></span><span class="bar" style="--h:21"></span><span class="bar" style="--h:16"></span><span class="bar" style="--h:35"></span><span class="bar" style="--h:30"></span><span class="bar" style="--h:14"></span><span class="bar" style="--h:25"></span><span class="bar" style="--h:45"></span><span class="bar" style="--h:18"></span><span class="bar" style="--h:37"></span><span class="bar" style="--h:27"></span><span class="bar" style="--h:14"></span><span class="bar" style="--h:21"></span><span class="bar" style="--h:32"></span><span class="bar fade" style="--h:17"></span><span class="bar fade" style="--h:26"></span><span class="bar fade" style="--h:34"></span><span class="bar fade" style="--h:12"></span><span class="bar fade" style="--h:20"></span><span class="bar fade" style="--h:29"></span><span class="bar fade" style="--h:18"></span><span class="bar fade" style="--h:23"></span><span class="bar fade" style="--h:15"></span><span class="bar fade" style="--h:25"></span><span class="bar fade" style="--h:17"></span><span class="bar fade" style="--h:12"></span>
@@ -1474,11 +1628,11 @@
                 </div>
                 <div class="player">
                   <button id="playButton" class="play" title="播放"><svg class="icon" viewBox="0 0 24 24"><path d="m8 5 12 7-12 7z" fill="currentColor" stroke="none" /></svg></button>
-                  <span class="time">01:24</span>
-                  <div class="range" aria-hidden="true"></div>
-                  <span class="time">03:28</span>
+                  <span id="currentTimeLabel" class="time">00:00</span>
+                  <input id="progressSlider" class="progress-slider" type="range" min="0" max="1000" value="0" aria-label="播放进度" />
+                  <span id="durationLabel" class="time">--:--</span>
                   <svg class="icon" viewBox="0 0 24 24" aria-hidden="true"><path d="M11 5 6 9H2v6h4l5 4z" /><path d="M15.5 8.5a5 5 0 0 1 0 7" /></svg>
-                  <div class="range volume" aria-hidden="true"></div>
+                  <input id="volumeSlider" class="volume-slider" type="range" min="0" max="1" value="1" step="0.01" aria-label="音量" />
                 </div>
                 <audio id="audioPlayer" class="native-audio" controls preload="metadata"></audio>
               </div>
@@ -1566,6 +1720,13 @@
       const versionList = document.getElementById("versionList");
       const allVersionsLink = document.getElementById("allVersionsLink");
       const audioPlayer = document.getElementById("audioPlayer");
+      const currentTimeLabel = document.getElementById("currentTimeLabel");
+      const durationLabelEl = document.getElementById("durationLabel");
+      const progressSlider = document.getElementById("progressSlider");
+      const volumeSlider = document.getElementById("volumeSlider");
+      const timeBubble = document.getElementById("timeBubble");
+      const waveWrap = document.querySelector(".wave-wrap");
+      const waveBars = [...document.querySelectorAll(".wave .bar")];
       const trackTitle = document.getElementById("trackTitle");
       const cover = document.getElementById("cover");
       const coverTitle = document.getElementById("coverTitle");
@@ -1590,6 +1751,20 @@
       const myCreationsNav = document.getElementById("myCreationsNav");
       const createFromHistoryButton = document.getElementById("createFromHistoryButton");
       const newVersionButton = document.getElementById("newVersionButton");
+      const imageUploadButton = document.getElementById("imageUploadButton");
+      const imageInput = document.getElementById("imageInput");
+      const imagePanel = document.getElementById("imagePanel");
+      const imagePreview = document.getElementById("imagePreview");
+      const imageCaptionTitle = document.getElementById("imageCaptionTitle");
+      const imageCaptionText = document.getElementById("imageCaptionText");
+      const imageCaptionJson = document.getElementById("imageCaptionJson");
+      const speechRecordButton = document.getElementById("speechRecordButton");
+      const speechPanel = document.getElementById("speechPanel");
+      const speechTitle = document.getElementById("speechTitle");
+      const speechStatus = document.getElementById("speechStatus");
+      const speechPreview = document.getElementById("speechPreview");
+      const speechText = document.getElementById("speechText");
+      const clearSpeechButton = document.getElementById("clearSpeechButton");
       const humRecordButton = document.getElementById("humRecordButton");
       const recordPanel = document.getElementById("recordPanel");
       const recordTitle = document.getElementById("recordTitle");
@@ -1610,6 +1785,18 @@
       let hummedAudioUrl = "";
       let hummedDurationSeconds = 0;
       let recordingStartedAt = 0;
+      let lyricLineTexts = [];
+      let timedLyricLines = [];
+      let isSeeking = false;
+      let imageCaption = null;
+      let imageDataUrl = "";
+      let speechRecorder = null;
+      let speechChunks = [];
+      let speechAudioBlob = null;
+      let speechAudioUrl = "";
+      let speechDurationSeconds = 0;
+      let speechStartedAt = 0;
+      let speechTranscript = "";
 
       textarea.addEventListener("input", () => {
         counter.textContent = `${textarea.value.length}/${textarea.maxLength}`;
@@ -1641,6 +1828,29 @@
       });
 
       clearRecordingButton.addEventListener("click", clearHumRecording);
+      imageUploadButton.addEventListener("click", () => imageInput.click());
+      imageInput.addEventListener("change", async () => {
+        const file = imageInput.files?.[0];
+        if (file) await handleImageUpload(file);
+      });
+      speechRecordButton.addEventListener("click", () => {
+        if (speechRecorder?.state === "recording") {
+          stopSpeechRecording();
+        } else {
+          startSpeechRecording();
+        }
+      });
+      clearSpeechButton.addEventListener("click", clearSpeechRecording);
+
+      document.addEventListener("paste", async (event) => {
+        const items = [...(event.clipboardData?.items || [])];
+        const imageItem = items.find((item) => item.type.startsWith("image/"));
+        if (!imageItem) return;
+        const file = imageItem.getAsFile();
+        if (!file) return;
+        event.preventDefault();
+        await handleImageUpload(file, "paste");
+      });
 
       function loadCreations() {
         try {
@@ -1679,6 +1889,99 @@
         const seconds = Math.max(0, Math.round(Number(duration) || 0));
         const minutes = Math.floor(seconds / 60);
         return `${minutes}:${String(seconds % 60).padStart(2, "0")}`;
+      }
+
+      function formatClock(seconds) {
+        const safeSeconds = Math.max(0, Math.floor(Number(seconds) || 0));
+        return `${Math.floor(safeSeconds / 60)}:${String(safeSeconds % 60).padStart(2, "0")}`;
+      }
+
+      function cleanLyricText(text = "") {
+        return String(text)
+          .replace(/\[[^\]]+\]/g, "")
+          .replace(/\s+/g, " ")
+          .trim();
+      }
+
+      function knownDuration() {
+        return Number.isFinite(audioPlayer.duration) && audioPlayer.duration > 0 ? audioPlayer.duration : 0;
+      }
+
+      function updatePlaybackUi() {
+        const duration = knownDuration();
+        const current = Math.min(audioPlayer.currentTime || 0, duration || audioPlayer.currentTime || 0);
+        const ratio = duration ? current / duration : 0;
+        const progress = `${Math.max(0, Math.min(100, ratio * 100))}%`;
+        waveWrap.style.setProperty("--progress", progress);
+        currentTimeLabel.textContent = formatClock(current);
+        durationLabelEl.textContent = duration ? formatClock(duration) : "--:--";
+        timeBubble.textContent = `${formatClock(current)} / ${duration ? formatClock(duration) : "--:--"}`;
+        if (!isSeeking) progressSlider.value = String(Math.round(ratio * 1000));
+        waveBars.forEach((bar, index) => {
+          bar.classList.toggle("played", waveBars.length ? index / waveBars.length <= ratio : false);
+          bar.classList.toggle("fade", waveBars.length ? index / waveBars.length > ratio : true);
+        });
+        syncLyrics(current, ratio);
+      }
+
+      function normalizeTimedLyrics(alignedWords = []) {
+        const entries = alignedWords
+          .filter((item) => item && item.success !== false && item.word && Number.isFinite(Number(item.startS)))
+          .map((item) => ({
+            text: cleanLyricText(item.word),
+            startS: Number(item.startS),
+            endS: Number(item.endS)
+          }))
+          .filter((item) => item.text);
+        const merged = [];
+        entries.forEach((entry) => {
+          const previous = merged.at(-1);
+          const shouldStartNewLine = /\[[^\]]+\]/.test(entry.text) || !previous || entry.startS - previous.endS > 1.4 || previous.text.length > 22;
+          if (shouldStartNewLine) {
+            merged.push({ ...entry });
+          } else {
+            previous.text = `${previous.text} ${entry.text}`.trim();
+            previous.endS = Math.max(previous.endS || entry.endS, entry.endS || entry.startS + .5);
+          }
+        });
+        return merged.map((line, index) => ({
+          ...line,
+          endS: Number.isFinite(line.endS) && line.endS > line.startS ? line.endS : (merged[index + 1]?.startS || line.startS + 2)
+        }));
+      }
+
+      function renderSyncedLyrics(text, alignedWords = []) {
+        timedLyricLines = normalizeTimedLyrics(alignedWords);
+        lyricLineTexts = timedLyricLines.length ? timedLyricLines.map((line) => line.text) : String(text || "纯音乐暂无歌词")
+          .split(/\n+/)
+          .map((line) => cleanLyricText(line))
+          .filter(Boolean);
+        if (!lyricLineTexts.length) lyricLineTexts = ["纯音乐暂无歌词"];
+        lyricLines.innerHTML = lyricLineTexts
+          .map((line, index) => `<span class="lyric-line future" data-lyric-index="${index}">${escapeHtml(line)}</span>`)
+          .join("");
+        syncLyrics(0, 0);
+      }
+
+      function syncLyrics(currentSeconds, ratio) {
+        const lines = [...lyricLines.querySelectorAll(".lyric-line")];
+        if (!lines.length) return;
+        let activeIndex = Math.min(lines.length - 1, Math.max(0, Math.floor(ratio * lines.length)));
+        if (timedLyricLines.length) {
+          const timedIndex = timedLyricLines.findIndex((line, index) => {
+            const nextStart = timedLyricLines[index + 1]?.startS ?? Infinity;
+            return currentSeconds >= line.startS && currentSeconds < Math.max(line.endS, nextStart);
+          });
+          if (timedIndex >= 0) activeIndex = timedIndex;
+          if (timedIndex < 0 && currentSeconds >= timedLyricLines.at(-1).endS) activeIndex = timedLyricLines.length - 1;
+        }
+        lines.forEach((line, index) => {
+          line.classList.toggle("past", index < activeIndex);
+          line.classList.toggle("active", index === activeIndex);
+          line.classList.toggle("future", index > activeIndex);
+        });
+        const activeLine = lines[activeIndex];
+        activeLine?.scrollIntoView({ block: "center", behavior: "smooth" });
       }
 
       function currentCreation() {
@@ -1735,6 +2038,167 @@
 
       function isHumMode() {
         return humRecordButton.classList.contains("selected");
+      }
+
+      function isImageMode() {
+        return imageUploadButton.classList.contains("selected");
+      }
+
+      function isSpeechMode() {
+        return speechRecordButton.classList.contains("selected");
+      }
+
+      function fileToImage(file) {
+        return new Promise((resolve, reject) => {
+          const img = new Image();
+          img.onload = () => resolve(img);
+          img.onerror = () => reject(new Error("图片读取失败"));
+          img.src = URL.createObjectURL(file);
+        });
+      }
+
+      async function compressImageFile(file) {
+        if (!/^image\/(jpeg|png|webp)$/i.test(file.type)) throw new Error("请上传 jpg、png 或 webp 图片");
+        if (file.size > 12 * 1024 * 1024) throw new Error("图片过大，请上传 12MB 以内图片");
+        const img = await fileToImage(file);
+        const maxSide = 1280;
+        const scale = Math.min(1, maxSide / Math.max(img.width, img.height));
+        const canvas = document.createElement("canvas");
+        canvas.width = Math.max(1, Math.round(img.width * scale));
+        canvas.height = Math.max(1, Math.round(img.height * scale));
+        canvas.getContext("2d").drawImage(img, 0, 0, canvas.width, canvas.height);
+        URL.revokeObjectURL(img.src);
+        return canvas.toDataURL("image/jpeg", 0.86);
+      }
+
+      async function handleImageUpload(file, source = "upload") {
+        try {
+          document.querySelectorAll(".tool-button").forEach((item) => item.classList.remove("selected"));
+          imageUploadButton.classList.add("selected");
+          imagePanel.classList.add("show");
+          imageCaption = null;
+          imageCaptionTitle.textContent = source === "paste" ? "正在处理剪切板图片" : "正在处理图片";
+          imageCaptionText.textContent = "正在压缩图片并调用多模态模型生成音乐描述……";
+          imageCaptionJson.textContent = "";
+          imageDataUrl = await compressImageFile(file);
+          imagePreview.src = imageDataUrl;
+
+          const result = await requestJson("/api/image-caption", {
+            method: "POST",
+            headers: { "Content-Type": "application/json" },
+            body: JSON.stringify({ imageDataUrl })
+          });
+          imageCaption = result.caption;
+          setTextGenerationMode("description");
+          textarea.value = imageCaption.music_caption || "";
+          counter.textContent = `${textarea.value.length}/${textarea.maxLength}`;
+          if (imageCaption.music_style?.length) applyStyleChips(imageCaption.music_style.join(","));
+          imageCaptionTitle.textContent = "图片音乐描述已生成";
+          imageCaptionText.textContent = imageCaption.music_caption || "已完成图片理解。";
+          imageCaptionJson.textContent = JSON.stringify(imageCaption, null, 2);
+          showMessage(`${source === "paste" ? "剪切板图片" : "图片"}已转换为音乐创作 Caption，点击生成 Demo 即可用图片生成歌曲。`);
+        } catch (error) {
+          imageCaptionTitle.textContent = "图片分析失败";
+          imageCaptionText.textContent = error.message;
+          showMessage(error.message, true);
+        }
+      }
+
+      async function startSpeechRecording() {
+        if (!navigator.mediaDevices?.getUserMedia || !window.MediaRecorder) {
+          showMessage("当前浏览器不支持麦克风录音，请使用新版 Chrome、Edge 或 Safari。", true);
+          return;
+        }
+
+        try {
+          const stream = await navigator.mediaDevices.getUserMedia({ audio: true });
+          const preferredType = MediaRecorder.isTypeSupported("audio/webm;codecs=opus") ? "audio/webm;codecs=opus" : "audio/webm";
+          speechRecorder = new MediaRecorder(stream, { mimeType: preferredType });
+          speechChunks = [];
+          speechTranscript = "";
+          speechStartedAt = Date.now();
+          document.querySelectorAll(".tool-button").forEach((item) => item.classList.remove("selected"));
+          speechRecordButton.classList.add("selected", "recording");
+          speechPanel.classList.add("show");
+          speechRecordButton.querySelector("span").textContent = "停止口述";
+          speechTitle.textContent = "正在录音";
+          speechStatus.textContent = "请直接描述歌曲主题、情绪、画面或想要表达的故事。";
+          speechText.textContent = "";
+
+          speechRecorder.addEventListener("dataavailable", (event) => {
+            if (event.data.size > 0) speechChunks.push(event.data);
+          });
+
+          speechRecorder.addEventListener("stop", async () => {
+            stream.getTracks().forEach((track) => track.stop());
+            speechDurationSeconds = Math.max(0, Math.round((Date.now() - speechStartedAt) / 1000));
+            speechAudioBlob = new Blob(speechChunks, { type: speechRecorder.mimeType || "audio/webm" });
+            if (speechAudioUrl) URL.revokeObjectURL(speechAudioUrl);
+            speechAudioUrl = URL.createObjectURL(speechAudioBlob);
+            speechPreview.src = speechAudioUrl;
+            speechRecordButton.classList.remove("recording");
+            speechRecordButton.querySelector("span").textContent = "重新口述";
+            await transcribeSpeech();
+          });
+
+          speechRecorder.start();
+        } catch (error) {
+          showMessage(`无法访问麦克风：${error.message}`, true);
+        }
+      }
+
+      function stopSpeechRecording() {
+        if (speechRecorder?.state === "recording") speechRecorder.stop();
+      }
+
+      async function transcribeSpeech() {
+        if (!speechAudioBlob) return;
+        speechTitle.textContent = "正在转写语音";
+        speechStatus.textContent = "正在调用语音模型识别口述内容……";
+        showMessage("正在将语音口述转换为文字……");
+        try {
+          const result = await requestJson("/api/speech/transcribe", {
+            method: "POST",
+            headers: { "Content-Type": "application/json" },
+            body: JSON.stringify({
+              audioBase64: await blobToBase64(speechAudioBlob),
+              mimeType: speechAudioBlob.type || "audio/webm",
+              durationSeconds: speechDurationSeconds
+            })
+          });
+          speechTranscript = result.text || "";
+          if (!speechTranscript) throw new Error(result.message || "语音识别结果为空");
+          setTextGenerationMode("description");
+          textarea.value = speechTranscript.slice(0, textarea.maxLength);
+          counter.textContent = `${textarea.value.length}/${textarea.maxLength}`;
+          speechTitle.textContent = "语音口述已转文字";
+          speechStatus.textContent = `已录制 ${speechDurationSeconds} 秒，文字已输入作曲模型描述框。`;
+          speechText.textContent = speechTranscript;
+          showMessage("语音已转为文字，点击生成 Demo 即可用口述内容生成歌曲。");
+        } catch (error) {
+          speechTitle.textContent = "语音转写失败";
+          speechStatus.textContent = error.message;
+          showMessage(error.message, true);
+        }
+      }
+
+      function clearSpeechRecording() {
+        if (speechRecorder?.state === "recording") stopSpeechRecording();
+        speechAudioBlob = null;
+        speechDurationSeconds = 0;
+        speechStartedAt = 0;
+        speechTranscript = "";
+        speechChunks = [];
+        if (speechAudioUrl) URL.revokeObjectURL(speechAudioUrl);
+        speechAudioUrl = "";
+        speechPreview.removeAttribute("src");
+        speechPreview.load();
+        speechText.textContent = "";
+        speechTitle.textContent = "语音口述未开始";
+        speechStatus.textContent = "点击“语音口述”开始，再点击一次结束录音并转文字。";
+        speechRecordButton.classList.remove("recording");
+        speechRecordButton.querySelector("span").textContent = "语音口述";
+        showMessage("已清除当前语音口述。");
       }
 
       async function startHumRecording() {
@@ -1864,7 +2328,7 @@
             body: JSON.stringify({
               title: version.title || creation.title,
               inspiration: shareInspiration.value.trim() || creation.prompt || "来自一段灵感创作",
-              lyrics: version.prompt || creation.prompt || "",
+              lyrics: String(version.prompt || creation.prompt || "").split(/\n+/).map(cleanLyricText).filter(Boolean).join("\n"),
               source: shareSource.value.trim() || "文字＋哼唱灵感",
               creatorName: shareCreatorName.value.trim() || "Echo",
               creatorRole: "独立音乐人",
@@ -1935,6 +2399,9 @@
         cover.style.backgroundImage = "";
         statusEl.textContent = "等待生成";
         dateEl.textContent = "尚未生成";
+        renderSyncedLyrics("生成完成后会在这里同步显示歌词");
+        updatePlaybackUi();
+        clearSpeechRecording();
         clearHumRecording();
         showMessage("输入灵感后点击生成，成功的曲目会自动保存到我的创作。");
         switchView("creation");
@@ -1942,14 +2409,25 @@
 
       async function generateMusic({ appendToCurrent = false } = {}) {
         switchView("creation");
-        const rawPrompt = textarea.value.trim();
+        let rawPrompt = textarea.value.trim();
         const title = document.getElementById("songTitle").value.trim();
         const instrumental = document.getElementById("instrumentalSelect").value === "true";
         const humMode = isHumMode();
-        const prompt = rawPrompt || (humMode ? `请基于上传的哼唱旋律生成一首${selectedStyle()}风格的完整器乐 Demo，保留主旋律走向，编配清晰、节奏稳定。` : "");
+        const imageMode = isImageMode();
+        const speechMode = isSpeechMode();
+        let prompt = rawPrompt || (humMode ? `请基于上传的哼唱旋律生成一首${selectedStyle()}风格的完整器乐 Demo，保留主旋律走向，编配清晰、节奏稳定。` : "");
         if (humMode && mediaRecorder?.state === "recording") return showMessage("请先停止录音，再生成 Demo。", true);
         if (humMode && !hummedAudioBlob) return showMessage("请先点击“哼唱录音”录入一段旋律。", true);
         if (humMode && hummedDurationSeconds < MIN_HUM_SECONDS) return showMessage(`当前哼唱只有 ${hummedDurationSeconds} 秒，太短容易生成失败。请重新录制至少 ${MIN_HUM_SECONDS} 秒，推荐 15-30 秒。`, true);
+        if (speechMode && speechRecorder?.state === "recording") return showMessage("请先停止语音口述，再生成 Demo。", true);
+        if (speechMode && speechAudioBlob && !speechTranscript) {
+          await transcribeSpeech();
+          rawPrompt = textarea.value.trim();
+          prompt = rawPrompt;
+          if (!speechTranscript) return;
+        }
+        if (speechMode && !speechTranscript && !prompt) return showMessage("请先完成语音口述并等待转文字。", true);
+        if (imageMode && !imageCaption && !prompt) return showMessage("请先上传图片并等待音乐描述生成完成。", true);
         if (!humMode && !prompt) return showMessage(textGenerationMode === "description" ? "请先输入歌曲描述。" : "请先输入完整歌词。", true);
         if (!humMode && textGenerationMode === "description" && prompt.length > 500) return showMessage("歌曲描述最多支持 500 个字符。", true);
         if ((humMode || textGenerationMode === "lyrics") && !title) return showMessage("请填写歌曲标题。", true);
@@ -2066,7 +2544,9 @@
             streamAudioUrl: track.streamAudioUrl || track.audioUrl,
             imageUrl: track.imageUrl || "",
             duration: track.duration || "",
-            createTime: track.createTime || new Date().toISOString()
+            createTime: track.createTime || new Date().toISOString(),
+            alignedLyrics: [],
+            waveformData: []
           });
         });
 
@@ -2076,6 +2556,29 @@
         renderCreation(creation, currentVersionId);
         renderHistory();
         showMessage(`生成完成，已保存 ${usableTracks.length} 个版本到「我的创作」。`);
+        fetchTimestampedLyricsForCreation(creation, taskId);
+      }
+
+      async function fetchTimestampedLyricsForCreation(creation, taskId) {
+        const pendingVersions = creation.versions.filter((version) => version.taskId === taskId && version.id && !version.alignedLyrics?.length && !version.lyricsSyncChecked);
+        if (!pendingVersions.length) return;
+        showMessage(`生成完成，正在获取 ${pendingVersions.length} 个版本的歌词时间戳……`);
+        let successCount = 0;
+        await Promise.allSettled(pendingVersions.map(async (version) => {
+          const result = await requestJson("/api/suno/timestamped-lyrics", {
+            method: "POST",
+            headers: { "Content-Type": "application/json" },
+            body: JSON.stringify({ taskId, audioId: version.id })
+          });
+          version.alignedLyrics = result.alignedWords || [];
+          version.waveformData = result.waveformData || [];
+          version.lyricsSyncChecked = true;
+          successCount += version.alignedLyrics.length ? 1 : 0;
+        }));
+        creation.updatedAt = new Date().toISOString();
+        saveCreations();
+        if (currentCreationId === creation.id) renderCreation(creation, currentVersionId);
+        showMessage(successCount ? `已接入精准歌词同步：${successCount}/${pendingVersions.length} 个版本可用。` : "未拿到歌词时间戳，已自动使用均分同步。", !successCount);
       }
 
       function renderCreation(creation, versionId = creation?.versions.at(-1)?.id) {
@@ -2101,6 +2604,8 @@
         statusEl.textContent = "已完成";
         currentAudioUrl = version.audioUrl || version.streamAudioUrl || "";
         audioPlayer.src = currentAudioUrl;
+        audioPlayer.currentTime = 0;
+        progressSlider.value = "0";
         if (version.imageUrl) {
           cover.classList.add("has-image");
           cover.style.backgroundImage = `url("${version.imageUrl.replaceAll('"', "%22")}")`;
@@ -2110,9 +2615,48 @@
           cover.style.backgroundImage = "";
           coverTitle.style.display = "";
         }
-        const lyrics = (version.prompt || "纯音乐暂无歌词").split(/\n+/).filter(Boolean);
-        const midpoint = Math.ceil(lyrics.length / 2);
-        lyricLines.innerHTML = `<p>${lyrics.slice(0, midpoint).map(escapeHtml).join("<br>")}</p><p>${lyrics.slice(midpoint).map(escapeHtml).join("<br>")}</p>`;
+        renderWaveform(version.waveformData);
+        renderSyncedLyrics(version.prompt || "纯音乐暂无歌词", version.alignedLyrics || []);
+        updatePlaybackUi();
+        ensureTimestampedLyrics(version);
+      }
+
+      function renderWaveform(waveformData = []) {
+        if (!Array.isArray(waveformData) || !waveformData.length) return;
+        const sampleSize = waveBars.length;
+        waveBars.forEach((bar, index) => {
+          const sourceIndex = Math.floor(index / sampleSize * waveformData.length);
+          const value = Math.max(0.08, Math.min(1, Number(waveformData[sourceIndex]) || 0.08));
+          bar.style.setProperty("--h", String(Math.round(8 + value * 38)));
+        });
+      }
+
+      async function ensureTimestampedLyrics(version) {
+        const creation = currentCreation();
+        if (!creation || !version?.taskId || !version?.id || version.alignedLyrics?.length || version.lyricsSyncPending || version.lyricsSyncChecked) return;
+        version.lyricsSyncPending = true;
+        saveCreations();
+        try {
+          const result = await requestJson("/api/suno/timestamped-lyrics", {
+            method: "POST",
+            headers: { "Content-Type": "application/json" },
+            body: JSON.stringify({ taskId: version.taskId, audioId: version.id })
+          });
+          version.alignedLyrics = result.alignedWords || [];
+          version.waveformData = result.waveformData || [];
+          version.lyricsSyncPending = false;
+          version.lyricsSyncChecked = true;
+          saveCreations();
+          if (currentVersionId === version.id) {
+            renderWaveform(version.waveformData);
+            renderSyncedLyrics(version.prompt || "纯音乐暂无歌词", version.alignedLyrics || []);
+            updatePlaybackUi();
+          }
+        } catch {
+          version.lyricsSyncPending = false;
+          version.lyricsSyncChecked = true;
+          saveCreations();
+        }
       }
 
       function renderVersions(creation) {
@@ -2169,6 +2713,49 @@
       document.getElementById("playButton").addEventListener("click", () => {
         if (!audioPlayer.src) return;
         audioPlayer.paused ? audioPlayer.play() : audioPlayer.pause();
+      });
+
+      audioPlayer.addEventListener("loadedmetadata", updatePlaybackUi);
+      audioPlayer.addEventListener("timeupdate", updatePlaybackUi);
+      audioPlayer.addEventListener("play", () => {
+        document.querySelector("#playButton path").setAttribute("d", "M8 5h3v14H8zM15 5h3v14h-3z");
+      });
+      audioPlayer.addEventListener("pause", () => {
+        document.querySelector("#playButton path").setAttribute("d", "m8 5 12 7-12 7z");
+      });
+      audioPlayer.addEventListener("ended", () => {
+        document.querySelector("#playButton path").setAttribute("d", "m8 5 12 7-12 7z");
+        updatePlaybackUi();
+      });
+
+      progressSlider.addEventListener("input", () => {
+        isSeeking = true;
+        const duration = knownDuration();
+        const ratio = Number(progressSlider.value) / 1000;
+        if (duration) audioPlayer.currentTime = duration * ratio;
+        updatePlaybackUi();
+      });
+
+      progressSlider.addEventListener("change", () => {
+        isSeeking = false;
+        updatePlaybackUi();
+      });
+
+      volumeSlider.addEventListener("input", () => {
+        audioPlayer.volume = Number(volumeSlider.value);
+      });
+
+      lyricLines.addEventListener("click", (event) => {
+        const line = event.target.closest(".lyric-line");
+        if (!line || !audioPlayer.src) return;
+        const index = Number(line.dataset.lyricIndex);
+        const duration = knownDuration();
+        if (timedLyricLines[index]) {
+          audioPlayer.currentTime = Math.max(0, timedLyricLines[index].startS);
+        } else if (duration && lyricLineTexts.length) {
+          audioPlayer.currentTime = duration * (index / lyricLineTexts.length);
+        }
+        updatePlaybackUi();
       });
 
       downloadButton.addEventListener("click", () => {
