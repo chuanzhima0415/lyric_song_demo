@@ -8,9 +8,19 @@ const app = express();
 const PORT = process.env.PORT || 3000;
 const SUNO_BASE_URL = "https://api.sunoapi.org/api/v1";
 const callbackCache = new Map();
-const uploadsDir = path.join(__dirname, "uploads");
-const dataDir = path.join(__dirname, "data");
-const sharesFile = path.join(dataDir, "shares.json");
+const unlockAttempts = new Map();
+const storageDir = process.env.STORAGE_DIR || "";
+const uploadsDir = process.env.UPLOADS_DIR
+  || (storageDir ? path.join(storageDir, "uploads") : path.join(__dirname, "uploads"));
+const dataDir = storageDir ? path.join(storageDir, "data") : path.join(__dirname, "data");
+const sharesFile = process.env.SHARES_FILE || path.join(dataDir, "shares.json");
+const SHARE_ACCESS_TYPE_PUBLIC = "public_link";
+const SHARE_ACCESS_TYPE_PASSWORD = "password";
+const SHARE_UNLOCK_TTL_MS = 24 * 60 * 60 * 1000;
+const SHARE_UNLOCK_WINDOW_MS = 10 * 60 * 1000;
+const SHARE_UNLOCK_MAX_FAILURES = 5;
+const SHARE_PASSWORD_KEY_LENGTH = 64;
+const DUMMY_PASSWORD_SALT = "00000000000000000000000000000000";
 const DASHSCOPE_MULTIMODAL_URL = "https://dashscope.aliyuncs.com/api/v1/services/aigc/multimodal-generation/generation";
 const DASHSCOPE_ASR_URL = "https://dashscope.aliyuncs.com/api/v1/services/audio/asr/transcription";
 const DASHSCOPE_TASK_URL = "https://dashscope.aliyuncs.com/api/v1/tasks";
@@ -65,13 +75,16 @@ const IMAGE_CAPTION_PROMPT = `你是一名音乐创作策划。请理解用户�
 
 fs.mkdirSync(uploadsDir, { recursive: true });
 fs.mkdirSync(dataDir, { recursive: true });
+fs.mkdirSync(path.dirname(sharesFile), { recursive: true });
 
+app.set("trust proxy", 1);
 app.use(express.json({ limit: "25mb" }));
 
 app.get("/health", (_req, res) => {
   res.status(200).json({ status: "ok" });
 });
 
+app.use("/uploads", express.static(uploadsDir));
 app.use(express.static(__dirname));
 
 function readShares() {
@@ -101,6 +114,206 @@ function escapeHtml(value = "") {
 
 function randomToken() {
   return crypto.randomBytes(4).toString("hex").slice(0, 6);
+}
+
+function scryptAccessCode(accessCode, salt) {
+  return new Promise((resolve, reject) => {
+    crypto.scrypt(accessCode, salt, SHARE_PASSWORD_KEY_LENGTH, (error, derivedKey) => {
+      if (error) reject(error);
+      else resolve(derivedKey);
+    });
+  });
+}
+
+async function hashAccessCode(accessCode) {
+  const salt = crypto.randomBytes(16).toString("hex");
+  const derivedKey = await scryptAccessCode(accessCode, salt);
+  return {
+    access_code_hash: derivedKey.toString("hex"),
+    access_code_salt: salt
+  };
+}
+
+async function verifyAccessCode(accessCode, share) {
+  const salt = /^[a-f0-9]{32}$/i.test(share?.access_code_salt || "")
+    ? share.access_code_salt
+    : DUMMY_PASSWORD_SALT;
+  const expectedHex = /^[a-f0-9]{128}$/i.test(share?.access_code_hash || "")
+    ? share.access_code_hash
+    : "0".repeat(SHARE_PASSWORD_KEY_LENGTH * 2);
+  const [actual, expected] = await Promise.all([
+    scryptAccessCode(String(accessCode || ""), salt),
+    Promise.resolve(Buffer.from(expectedHex, "hex"))
+  ]);
+  return crypto.timingSafeEqual(actual, expected);
+}
+
+function requireShareSessionSecret() {
+  const secret = process.env.SHARE_SESSION_SECRET || "";
+  if (secret.length < 32) {
+    const error = new Error("服务端未配置有效的 SHARE_SESSION_SECRET（至少 32 个字符）");
+    error.status = 500;
+    throw error;
+  }
+  return secret;
+}
+
+function unlockCookieName(token) {
+  const tokenHash = crypto.createHash("sha256").update(String(token)).digest("hex").slice(0, 16);
+  return `melodyflow_share_${tokenHash}`;
+}
+
+function unlockCookieSignature(token, expiresAt, secret) {
+  return crypto
+    .createHmac("sha256", secret)
+    .update(`${token}.${expiresAt}`)
+    .digest("base64url");
+}
+
+function createUnlockCookieValue(token, expiresAt, secret) {
+  return `${expiresAt}.${unlockCookieSignature(token, expiresAt, secret)}`;
+}
+
+function parseCookies(cookieHeader = "") {
+  return String(cookieHeader)
+    .split(";")
+    .reduce((cookies, item) => {
+      const separatorIndex = item.indexOf("=");
+      if (separatorIndex < 0) return cookies;
+      const name = item.slice(0, separatorIndex).trim();
+      const value = item.slice(separatorIndex + 1).trim();
+      if (name) cookies[name] = value;
+      return cookies;
+    }, {});
+}
+
+function hasValidUnlockCookie(req, token, now = Date.now()) {
+  let secret;
+  try {
+    secret = requireShareSessionSecret();
+  } catch {
+    return false;
+  }
+  const value = parseCookies(req.headers.cookie)[unlockCookieName(token)] || "";
+  const [expiresAtText, signature = ""] = value.split(".");
+  const expiresAt = Number(expiresAtText);
+  if (!Number.isSafeInteger(expiresAt) || expiresAt <= now) return false;
+  const expected = unlockCookieSignature(token, expiresAt, secret);
+  const actualBuffer = Buffer.from(signature);
+  const expectedBuffer = Buffer.from(expected);
+  return actualBuffer.length === expectedBuffer.length
+    && crypto.timingSafeEqual(actualBuffer, expectedBuffer);
+}
+
+function isPasswordProtected(share) {
+  return share?.access_type === SHARE_ACCESS_TYPE_PASSWORD;
+}
+
+function publicShare(share) {
+  const {
+    access_code: _legacyAccessCode,
+    access_code_hash: _accessCodeHash,
+    access_code_salt: _accessCodeSalt,
+    ...safeShare
+  } = share;
+  return {
+    ...safeShare,
+    requiresPassword: isPasswordProtected(share)
+  };
+}
+
+function unlockAttemptKey(req, token) {
+  return `${req.ip || req.socket.remoteAddress || "unknown"}|${token}`;
+}
+
+function activeUnlockAttempt(req, token, now = Date.now()) {
+  const key = unlockAttemptKey(req, token);
+  const attempt = unlockAttempts.get(key);
+  if (!attempt || now - attempt.startedAt >= SHARE_UNLOCK_WINDOW_MS) {
+    unlockAttempts.delete(key);
+    return null;
+  }
+  return attempt;
+}
+
+function recordUnlockFailure(req, token, now = Date.now()) {
+  const key = unlockAttemptKey(req, token);
+  const current = activeUnlockAttempt(req, token, now);
+  unlockAttempts.set(key, current
+    ? { ...current, failures: current.failures + 1 }
+    : { failures: 1, startedAt: now });
+}
+
+function clearUnlockFailures(req, token) {
+  unlockAttempts.delete(unlockAttemptKey(req, token));
+}
+
+function makePasswordPage(token) {
+  const unlockUrl = `/api/shares/${encodeURIComponent(token)}/unlock`;
+  return `<!doctype html>
+<html lang="zh-CN">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>请输入访问密码 - MelodyFlow</title>
+    <style>
+      * { box-sizing: border-box; }
+      body { margin: 0; min-height: 100vh; display: grid; place-items: center; padding: 24px; color: #101223; background: radial-gradient(circle at 78% 8%, rgba(121,72,255,.12), transparent 34%), linear-gradient(135deg,#fbfbfe,#f1f2f8); font-family: ui-sans-serif,system-ui,-apple-system,BlinkMacSystemFont,"Segoe UI","PingFang SC","Microsoft YaHei",sans-serif; }
+      .card { width: min(390px, 100%); padding: 34px 30px; background: #fff; border: 1px solid #e7e8f0; border-radius: 22px; box-shadow: 0 24px 60px rgba(35,32,69,.14); }
+      .lock { display: grid; width: 54px; height: 54px; margin-bottom: 22px; place-items: center; color: #7048ff; background: #efeaff; border-radius: 16px; font-size: 25px; }
+      h1 { margin: 0 0 10px; font-size: 26px; }
+      p { margin: 0 0 24px; color: #697082; line-height: 1.6; }
+      label { display: grid; gap: 8px; color: #4f5668; font-size: 14px; }
+      input { width: 100%; min-height: 48px; padding: 11px 13px; color: #202334; background: #fff; border: 1px solid #dfe1ea; border-radius: 10px; outline: none; font: inherit; }
+      input:focus { border-color: #7048ff; box-shadow: 0 0 0 3px rgba(112,72,255,.12); }
+      button { width: 100%; min-height: 48px; margin-top: 14px; color: #fff; background: linear-gradient(135deg,#7048ff,#935cff); border: 0; border-radius: 10px; font: inherit; font-weight: 760; cursor: pointer; }
+      button:disabled { cursor: wait; opacity: .68; }
+      .message { min-height: 20px; margin: 12px 0 0; color: #d64242; font-size: 14px; }
+    </style>
+  </head>
+  <body>
+    <main class="card">
+      <div class="lock" aria-hidden="true">🔒</div>
+      <h1>这个分享需要密码</h1>
+      <p>请输入分享人提供的访问密码，验证后 24 小时内无需再次输入。</p>
+      <form id="unlockForm">
+        <label>访问密码
+          <input id="accessCode" type="password" minlength="4" maxlength="12" autocomplete="current-password" required autofocus />
+        </label>
+        <button id="submitButton" type="submit">解锁并试听</button>
+        <div id="message" class="message" role="alert"></div>
+      </form>
+    </main>
+    <script>
+      const form = document.getElementById("unlockForm");
+      const accessCode = document.getElementById("accessCode");
+      const submitButton = document.getElementById("submitButton");
+      const message = document.getElementById("message");
+      form.addEventListener("submit", async (event) => {
+        event.preventDefault();
+        message.textContent = "";
+        submitButton.disabled = true;
+        submitButton.textContent = "正在验证…";
+        try {
+          const response = await fetch(${JSON.stringify(unlockUrl)}, {
+            method: "POST",
+            headers: { "Content-Type": "application/json" },
+            body: JSON.stringify({ accessCode: accessCode.value })
+          });
+          const body = await response.json().catch(() => ({}));
+          if (!response.ok) throw new Error(body.message || "验证失败，请稍后重试");
+          window.location.reload();
+        } catch (error) {
+          message.textContent = error.message;
+          accessCode.select();
+        } finally {
+          submitButton.disabled = false;
+          submitButton.textContent = "解锁并试听";
+        }
+      });
+    </script>
+  </body>
+</html>`;
 }
 
 function makeSharePage(share, shareUrl) {
@@ -578,7 +791,7 @@ app.post("/api/suno/callback", (req, res) => {
   res.status(200).json({ status: "received" });
 });
 
-app.post("/api/shares", (req, res, next) => {
+app.post("/api/shares", async (req, res, next) => {
   try {
     const {
       title,
@@ -590,10 +803,21 @@ app.post("/api/shares", (req, res, next) => {
       audioUrl,
       styleTags = [],
       versionLabel,
-      heroImageUrl = ""
+      heroImageUrl = "",
+      accessType = SHARE_ACCESS_TYPE_PUBLIC,
+      accessCode: rawAccessCode = ""
     } = req.body || {};
 
     if (!title || !audioUrl) return res.status(400).json({ message: "title 和 audioUrl 不能为空" });
+    if (![SHARE_ACCESS_TYPE_PUBLIC, SHARE_ACCESS_TYPE_PASSWORD].includes(accessType)) {
+      return res.status(400).json({ message: "accessType 仅支持 public_link 或 password" });
+    }
+    const accessCode = String(rawAccessCode).trim();
+    const accessCodeLength = Array.from(accessCode).length;
+    if (accessType === SHARE_ACCESS_TYPE_PASSWORD && (accessCodeLength < 4 || accessCodeLength > 12)) {
+      return res.status(400).json({ message: "访问密码长度必须为 4–12 个字符" });
+    }
+    if (accessType === SHARE_ACCESS_TYPE_PASSWORD) requireShareSessionSecret();
 
     const shares = readShares();
     const variants = [
@@ -602,14 +826,18 @@ app.post("/api/shares", (req, res, next) => {
       { name: "歌词优先", inspiration: lyrics ? lyrics.split(/\n+/).find(Boolean) : inspiration }
     ];
 
-    const candidates = variants.map((variant) => {
+    const candidates = [];
+    for (const variant of variants) {
       let token = randomToken();
       while (shares[token]) token = randomToken();
+      const protectedCredentials = accessType === SHARE_ACCESS_TYPE_PASSWORD
+        ? await hashAccessCode(accessCode)
+        : {};
       const share = {
         token,
         template: variant.name,
-        access_type: "public_link",
-        access_code: null,
+        access_type: accessType,
+        ...protectedCredentials,
         is_active: true,
         title,
         inspiration: variant.inspiration || "来自一段灵感创作",
@@ -624,18 +852,20 @@ app.post("/api/shares", (req, res, next) => {
         createdAt: new Date().toISOString()
       };
       shares[token] = share;
-      return {
+      candidates.push({
         token,
         template: variant.name,
         url: `${publicBaseUrl(req)}/s/${token}`,
+        previewUrl: `/s/${token}`,
+        requiresPassword: isPasswordProtected(share),
         preview: {
           title: share.title,
           inspiration: share.inspiration,
           styleTags: share.styleTags,
           versionLabel: share.versionLabel
         }
-      };
-    });
+      });
+    }
 
     writeShares(shares);
     res.json({ candidates });
@@ -647,7 +877,46 @@ app.get("/api/shares/:token", (req, res) => {
   if (!share) return res.status(404).json({ message: "分享链接不存在" });
   if (!share.is_active) return res.status(410).json({ message: "分享已关闭" });
   if (!share.audioUrl) return res.status(404).json({ message: "音频不存在" });
-  res.json({ share });
+  if (isPasswordProtected(share) && !hasValidUnlockCookie(req, req.params.token)) {
+    return res.status(401).json({ message: "需要访问密码", requiresPassword: true });
+  }
+  res.json({ share: publicShare(share) });
+});
+
+app.post("/api/shares/:token/unlock", async (req, res, next) => {
+  try {
+    const token = req.params.token;
+    const attempt = activeUnlockAttempt(req, token);
+    if (attempt?.failures >= SHARE_UNLOCK_MAX_FAILURES) {
+      return res.status(429).json({ message: "尝试次数过多，请 10 分钟后再试" });
+    }
+
+    const share = readShares()[token];
+    const accessCode = String(req.body?.accessCode || "").slice(0, 128);
+    const isUnlockable = Boolean(
+      share
+      && share.is_active
+      && share.audioUrl
+      && isPasswordProtected(share)
+    );
+    const passwordMatches = await verifyAccessCode(accessCode, isUnlockable ? share : null);
+    if (!isUnlockable || !passwordMatches) {
+      recordUnlockFailure(req, token);
+      return res.status(401).json({ message: "密码错误或分享不可用" });
+    }
+
+    const secret = requireShareSessionSecret();
+    const expiresAt = Date.now() + SHARE_UNLOCK_TTL_MS;
+    res.cookie(unlockCookieName(token), createUnlockCookieValue(token, expiresAt, secret), {
+      httpOnly: true,
+      sameSite: "lax",
+      secure: req.secure,
+      maxAge: SHARE_UNLOCK_TTL_MS,
+      path: "/"
+    });
+    clearUnlockFailures(req, token);
+    res.json({ unlocked: true });
+  } catch (error) { next(error); }
 });
 
 app.get("/s/:token", (req, res) => {
@@ -657,6 +926,9 @@ app.get("/s/:token", (req, res) => {
 <html lang="zh-CN"><head><meta charset="UTF-8" /><meta name="viewport" content="width=device-width, initial-scale=1.0" /><title>分享不可用</title>
 <style>body{margin:0;min-height:100vh;display:grid;place-items:center;padding:24px;color:#555c70;background:#f7f7fb;font-family:ui-sans-serif,system-ui,-apple-system,BlinkMacSystemFont,"PingFang SC","Microsoft YaHei",sans-serif}.box{max-width:360px;text-align:center;background:#fff;border:1px solid #e7e8f0;border-radius:16px;padding:28px;box-shadow:0 18px 42px rgba(35,32,69,.1)}h1{margin:0 0 10px;color:#101223;font-size:24px}</style></head>
 <body><div class="box"><h1>分享不可用</h1><p>${!share ? "Token 无效，找不到这个分享。" : share.is_active ? "音频不存在或已失效。" : "这个分享已被关闭。"}</p></div></body></html>`);
+  }
+  if (isPasswordProtected(share) && !hasValidUnlockCookie(req, req.params.token)) {
+    return res.type("html").send(makePasswordPage(req.params.token));
   }
   res.type("html").send(makeSharePage(share, `${publicBaseUrl(req)}/s/${share.token}`));
 });
@@ -669,4 +941,12 @@ app.use((error, req, res, next) => {
   });
 });
 
-app.listen(PORT, () => console.log(`MelodyFlow 已启动：http://localhost:${PORT}`));
+if (require.main === module) {
+  app.listen(PORT, () => console.log(`MelodyFlow 已启动：http://localhost:${PORT}`));
+}
+
+module.exports = {
+  app,
+  createUnlockCookieValue,
+  unlockCookieName
+};
