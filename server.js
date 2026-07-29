@@ -67,6 +67,11 @@ fs.mkdirSync(uploadsDir, { recursive: true });
 fs.mkdirSync(dataDir, { recursive: true });
 
 app.use(express.json({ limit: "25mb" }));
+
+app.get("/health", (_req, res) => {
+  res.status(200).json({ status: "ok" });
+});
+
 app.use(express.static(__dirname));
 
 function readShares() {
