@@ -2,6 +2,7 @@ const assert = require("node:assert/strict");
 const fs = require("node:fs");
 const os = require("node:os");
 const path = require("node:path");
+const vm = require("node:vm");
 const { after, before, test } = require("node:test");
 
 const testDataDir = fs.mkdtempSync(path.join(os.tmpdir(), "melodyflow-share-test-"));
@@ -29,6 +30,7 @@ process.env.UPLOADS_DIR = path.join(testDataDir, "uploads");
 process.env.SHARE_IMAGES_DIR = testShareImagesDir;
 process.env.SHARE_SESSION_SECRET = testSecret;
 process.env.PUBLIC_BASE_URL = "http://test.invalid";
+process.env.DASHSCOPE_API_KEY = "";
 
 const {
   app,
@@ -65,6 +67,13 @@ async function postJson(url, body, cookie = "") {
   });
 }
 
+async function deleteJson(url, cookie = "") {
+  return fetch(`${baseUrl}${url}`, {
+    method: "DELETE",
+    headers: cookie ? { Cookie: cookie } : {}
+  });
+}
+
 function sharePayload(overrides = {}) {
   return {
     title: "受保护的测试歌曲",
@@ -78,6 +87,38 @@ function sharePayload(overrides = {}) {
 function cookiePair(setCookieHeader) {
   return String(setCookieHeader || "").split(";")[0];
 }
+
+test("首页同时保留功能分支入口和 main 分享能力", async () => {
+  const response = await fetch(`${baseUrl}/`);
+  const html = await response.text();
+
+  assert.equal(response.status, 200);
+  for (const requiredMarker of [
+    'id="creationSettingsModal"',
+    'id="noInspirationModal"',
+    'id="adjustModal"',
+    'id="shareSource"',
+    'id="sharePasswordEnabled"',
+    'id="shareAccessCode"',
+    'class="copy-share" data-copy-text="${escapeHtml(candidate.url)}"',
+    'class="copy-password" data-copy-text="${escapeHtml(accessCode)}"',
+    'candidate.previewUrl || candidate.url',
+    'accessType: requiresPassword ? "password" : "public_link"'
+  ]) {
+    assert.ok(html.includes(requiredMarker), `首页缺少 ${requiredMarker}`);
+  }
+  assert.doesNotMatch(html, /title="灵感库"/);
+  assert.doesNotMatch(html, /title="与我协作"/);
+  assert.doesNotMatch(html, /\.scrollIntoView\s*\(/);
+
+  const inlineScripts = [...html.matchAll(/<script(?:\s[^>]*)?>([\s\S]*?)<\/script>/gi)];
+  assert.ok(inlineScripts.length > 0);
+  for (const [index, match] of inlineScripts.entries()) {
+    assert.doesNotThrow(() => {
+      new vm.Script(match[1], { filename: `index-inline-${index}.js` });
+    });
+  }
+});
 
 test("公开分享保持无需密码即可访问", async () => {
   const createResponse = await postJson("/api/shares", sharePayload({
@@ -115,6 +156,18 @@ test("公开分享保持无需密码即可访问", async () => {
   assert.match(pageHtml, /private-song\.mp3/);
   assert.ok(pageHtml.includes(candidates[0].preview.heroImageUrl));
   assert.doesNotMatch(pageHtml, /顶部图片留空/);
+  assert.match(pageHtml, /歌曲解读/);
+  assert.match(pageHtml, /歌曲描述/);
+  assert.match(pageHtml, /反馈修改意见/);
+  assert.match(pageHtml, /旋律里藏着心事/);
+  assert.doesNotMatch(pageHtml, /class="lyrics"/);
+  assert.doesNotMatch(pageHtml, /不能在锁定页泄露的歌词/);
+
+  const publicApiResponse = await fetch(`${baseUrl}/api/shares/${candidates[0].token}`);
+  const publicApiText = await publicApiResponse.text();
+  assert.equal(publicApiResponse.status, 200);
+  assert.doesNotMatch(publicApiText, /不能在锁定页泄露的歌词/);
+  assert.doesNotMatch(publicApiText, /"lyrics"/);
 });
 
 test("健康检查返回当前 Render commit", async () => {
@@ -184,6 +237,74 @@ test("Render 环境始终使用正式服务域名生成分享链接", async () =
   }
 });
 
+test("Render 环境的生成回调和上传地址不会回退到旧 ngrok", async () => {
+  const previousRenderExternalUrl = process.env.RENDER_EXTERNAL_URL;
+  const previousPublicBaseUrl = process.env.PUBLIC_BASE_URL;
+  const previousSunoApiKey = process.env.SUNO_API_KEY;
+  const originalFetch = global.fetch;
+  const upstreamRequests = [];
+
+  process.env.RENDER_EXTERNAL_URL = "https://melodyflow-demo.onrender.com/";
+  process.env.PUBLIC_BASE_URL = "https://offline-tunnel.ngrok-free.dev";
+  process.env.SUNO_API_KEY = "test-suno-api-key";
+  global.fetch = async (url, options = {}) => {
+    if (String(url).startsWith(baseUrl)) return originalFetch(url, options);
+    upstreamRequests.push({
+      url: String(url),
+      body: JSON.parse(options.body || "{}")
+    });
+    return new Response(JSON.stringify({
+      code: 200,
+      data: { taskId: `task-${upstreamRequests.length}` }
+    }), {
+      status: 200,
+      headers: { "Content-Type": "application/json" }
+    });
+  };
+
+  try {
+    const generateResponse = await postJson("/api/suno/generate", {
+      prompt: "一段温暖的城市流行歌曲描述",
+      generationType: "description",
+      customMode: false,
+      instrumental: false,
+      callbackUrl: "https://stale-client-tunnel.ngrok-free.dev/api/suno/callback"
+    });
+    assert.equal(generateResponse.status, 200);
+
+    const uploadResponse = await postJson("/api/suno/upload-cover", {
+      audioBase64: "dGVzdA==",
+      mimeType: "audio/webm",
+      durationSeconds: 12,
+      title: "哼唱测试",
+      tags: "Pop",
+      callbackUrl: "https://stale-client-tunnel.ngrok-free.dev/api/suno/callback"
+    });
+    assert.equal(uploadResponse.status, 200);
+
+    assert.equal(upstreamRequests.length, 2);
+    for (const request of upstreamRequests) {
+      assert.equal(
+        request.body.callBackUrl,
+        "https://melodyflow-demo.onrender.com/api/suno/callback"
+      );
+      assert.doesNotMatch(JSON.stringify(request.body), /ngrok-free\.dev/);
+    }
+    assert.match(
+      upstreamRequests[1].body.uploadUrl,
+      /^https:\/\/melodyflow-demo\.onrender\.com\/uploads\/hum-/
+    );
+  } finally {
+    global.fetch = originalFetch;
+    if (previousRenderExternalUrl === undefined) delete process.env.RENDER_EXTERNAL_URL;
+    else process.env.RENDER_EXTERNAL_URL = previousRenderExternalUrl;
+    if (previousPublicBaseUrl === undefined) delete process.env.PUBLIC_BASE_URL;
+    else process.env.PUBLIC_BASE_URL = previousPublicBaseUrl;
+    if (previousSunoApiKey === undefined) delete process.env.SUNO_API_KEY;
+    else process.env.SUNO_API_KEY = previousSunoApiKey;
+  }
+});
+
 test("密码分享只在有效 Cookie 下返回内容", async () => {
   const accessCode = "安全42ab";
   const createResponse = await postJson("/api/shares", sharePayload({
@@ -203,6 +324,7 @@ test("密码分享只在有效 Cookie 下返回内容", async () => {
   assert.equal(typeof storedShare.access_code_hash, "string");
   assert.equal(typeof storedShare.access_code_salt, "string");
   assert.equal("access_code" in storedShare, false);
+  assert.equal("lyrics" in storedShare, false);
   assert.doesNotMatch(JSON.stringify(storedShare), new RegExp(accessCode));
 
   const lockedPageResponse = await fetch(`${baseUrl}/s/${candidates[0].token}`);
@@ -289,6 +411,103 @@ test("密码分享只在有效 Cookie 下返回内容", async () => {
   );
   assert.equal(missingResponse.status, 401);
   assert.equal((await missingResponse.json()).message, "密码错误或分享不可用");
+});
+
+test("旧分享记录使用新版卡片且不会重新展示歌词", async () => {
+  const shares = JSON.parse(fs.readFileSync(testSharesFile, "utf8"));
+  shares.legacy1 = {
+    token: "legacy1",
+    access_type: "public_link",
+    is_active: true,
+    title: "旧版分享",
+    inspiration: "旧版灵感说明",
+    lyrics: "旧记录中不应展示的完整歌词",
+    audioUrl: "https://audio.example/legacy.mp3",
+    styleTags: ["Pop"],
+    versionLabel: "v1",
+    heroImageUrl: "/share-images/%E5%80%99%E9%80%89%E5%9B%BE%E7%89%87%201.png",
+    createdAt: "2026-07-30T00:00:00.000Z"
+  };
+  fs.writeFileSync(testSharesFile, JSON.stringify(shares, null, 2));
+
+  const response = await fetch(`${baseUrl}/s/legacy1`);
+  const html = await response.text();
+  assert.equal(response.status, 200);
+  assert.match(html, /旧版分享/);
+  assert.match(html, /歌曲解读/);
+  assert.match(html, /歌曲描述/);
+  assert.match(html, /反馈修改意见/);
+  assert.doesNotMatch(html, /旧记录中不应展示的完整歌词/);
+  assert.doesNotMatch(html, /class="lyrics"/);
+});
+
+test("密码分享的反馈页和评论接口复用解锁 Cookie", async () => {
+  const accessCode = "反馈42ab";
+  const createResponse = await postJson("/api/shares", sharePayload({
+    accessType: "password",
+    accessCode
+  }));
+  assert.equal(createResponse.status, 200);
+  const { candidates } = await createResponse.json();
+  const token = candidates[0].token;
+
+  const lockedFeedbackResponse = await fetch(`${baseUrl}/s/${token}/feedback`);
+  const lockedFeedbackHtml = await lockedFeedbackResponse.text();
+  assert.equal(lockedFeedbackResponse.status, 200);
+  assert.match(lockedFeedbackHtml, /这个分享需要密码/);
+  assert.doesNotMatch(lockedFeedbackHtml, /private-song\.mp3/);
+
+  const lockedCommentResponse = await postJson(`/api/shares/${token}/comments`, {
+    timeSeconds: 42,
+    rating: 4,
+    title: "副歌情绪",
+    category: "建议",
+    text: "这里可以再克制一点"
+  });
+  assert.equal(lockedCommentResponse.status, 401);
+
+  const unlockResponse = await postJson(`/api/shares/${token}/unlock`, { accessCode });
+  assert.equal(unlockResponse.status, 200);
+  const cookie = cookiePair(unlockResponse.headers.get("set-cookie"));
+
+  const feedbackResponse = await fetch(`${baseUrl}/s/${token}/feedback`, {
+    headers: { Cookie: cookie }
+  });
+  const feedbackHtml = await feedbackResponse.text();
+  assert.equal(feedbackResponse.status, 200);
+  assert.match(feedbackHtml, /点击时间轴上的任意位置/);
+  assert.match(feedbackHtml, /private-song\.mp3/);
+
+  const createCommentResponse = await postJson(`/api/shares/${token}/comments`, {
+    timeSeconds: 42,
+    rating: 4,
+    title: "副歌情绪",
+    category: "建议",
+    text: "这里可以再克制一点"
+  }, cookie);
+  assert.equal(createCommentResponse.status, 200);
+  const { comment } = await createCommentResponse.json();
+
+  const feedbackWithCommentResponse = await fetch(`${baseUrl}/s/${token}/feedback`, {
+    headers: { Cookie: cookie }
+  });
+  assert.match(await feedbackWithCommentResponse.text(), /这里可以再克制一点/);
+
+  const lockedDeleteResponse = await deleteJson(
+    `/api/shares/${token}/comments/${comment.id}`
+  );
+  assert.equal(lockedDeleteResponse.status, 401);
+
+  const deleteResponse = await deleteJson(
+    `/api/shares/${token}/comments/${comment.id}`,
+    cookie
+  );
+  assert.equal(deleteResponse.status, 200);
+  assert.deepEqual(await deleteResponse.json(), { ok: true });
+
+  const clearResponse = await deleteJson(`/api/shares/${token}/comments`, cookie);
+  assert.equal(clearResponse.status, 200);
+  assert.deepEqual(await clearResponse.json(), { ok: true });
 });
 
 test("分享图片不足三张时拒绝创建且不写入记录", async () => {

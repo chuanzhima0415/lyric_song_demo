@@ -41,7 +41,7 @@ jobs:
       - name: Verify bundled share images
         shell: bash
         run: |
-          image_count="$(find "project/分享图打包" -maxdepth 1 -type f \
+          image_count="$(find "分享图打包" -maxdepth 1 -type f \
             \( -iname "*.png" -o -iname "*.jpg" -o -iname "*.jpeg" -o -iname "*.webp" \) \
             | wc -l | tr -d " ")"
           if [ "${image_count}" -lt 3 ]; then
