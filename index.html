@@ -1214,6 +1214,43 @@
       .share-config .wide {
         grid-column: 1 / -1;
       }
+      .share-password-toggle {
+        display: flex !important;
+        align-items: center;
+        justify-content: space-between;
+        gap: 18px;
+        min-height: 58px;
+        padding: 12px 14px;
+        background: #f7f7fb;
+        border: 1px solid var(--line);
+        border-radius: 8px;
+      }
+      .share-password-toggle > span {
+        display: flex;
+        align-items: center;
+        gap: 10px;
+        color: #343848;
+        font-weight: 700;
+      }
+      .share-password-toggle small {
+        color: #777e90;
+        line-height: 1.4;
+        text-align: right;
+      }
+      .share-password-toggle input {
+        width: 18px;
+        min-height: 18px;
+        margin: 0;
+        padding: 0;
+        accent-color: var(--purple);
+      }
+      .share-password-field[hidden] {
+        display: none;
+      }
+      .share-password-field input:focus {
+        border-color: var(--purple);
+        box-shadow: 0 0 0 3px rgba(112, 72, 255, .1);
+      }
       .share-candidates {
         display: grid;
         grid-template-columns: repeat(3, minmax(0, 1fr));
@@ -1243,6 +1280,21 @@
         font-size: 18px;
         font-weight: 760;
       }
+      .share-card-heading {
+        display: flex;
+        align-items: center;
+        justify-content: space-between;
+        gap: 10px;
+      }
+      .share-lock-badge {
+        flex: 0 0 auto;
+        padding: 5px 8px;
+        color: #7048ff;
+        background: #efeaff;
+        border-radius: 999px;
+        font-size: 12px;
+        font-weight: 700;
+      }
       .share-card-text {
         min-height: 42px;
         margin: 0 0 14px;
@@ -1263,6 +1315,9 @@
         display: grid;
         grid-template-columns: 1fr 1fr;
         gap: 8px;
+      }
+      .share-actions.protected {
+        grid-template-columns: repeat(3, minmax(0, 1fr));
       }
       .share-actions button,
       .share-actions a {
@@ -1697,6 +1752,16 @@
             <label class="wide">一句话灵感说明
               <textarea id="shareInspiration" maxlength="180" placeholder="例如：来自一段文字、一张照片和一段哼唱灵感"></textarea>
             </label>
+            <label class="share-password-toggle wide">
+              <span>
+                <input id="sharePasswordEnabled" type="checkbox" />
+                开启密码保护
+              </span>
+              <small>访客输入密码后，当前浏览器 24 小时内免验证</small>
+            </label>
+            <label id="sharePasswordField" class="share-password-field wide" hidden>访问密码（4–12 个字符）
+              <input id="shareAccessCode" type="password" minlength="4" maxlength="12" autocomplete="new-password" placeholder="请设置访问密码" />
+            </label>
             <button id="shareRefreshButton" class="primary wide" type="button">生成候选 <svg class="icon" viewBox="0 0 24 24"><path d="M13 2 9 10l-7 3 7 3 4 8 4-8 7-3-7-3z" /></svg></button>
           </div>
           <div id="shareCandidates" class="share-candidates">
@@ -1740,6 +1805,9 @@
       const shareCreatorName = document.getElementById("shareCreatorName");
       const shareSource = document.getElementById("shareSource");
       const shareInspiration = document.getElementById("shareInspiration");
+      const sharePasswordEnabled = document.getElementById("sharePasswordEnabled");
+      const sharePasswordField = document.getElementById("sharePasswordField");
+      const shareAccessCode = document.getElementById("shareAccessCode");
       const shareRefreshButton = document.getElementById("shareRefreshButton");
       const pageTitle = document.getElementById("pageTitle");
       const pageSubtitle = document.getElementById("pageSubtitle");
@@ -2307,9 +2375,8 @@
           return;
         }
         shareInspiration.value = creation.prompt || version.prompt || "来自一段文字、图片和哼唱灵感";
-        shareCandidates.innerHTML = '<div class="share-empty">正在生成三个候选分享链接…</div>';
+        shareCandidates.innerHTML = '<div class="share-empty">配置完成后，点击“生成候选”创建分享链接</div>';
         shareModal.classList.add("show");
-        createShareCandidates();
       }
 
       function closeShareModal() {
@@ -2320,7 +2387,17 @@
         const creation = currentCreation();
         const version = currentVersion();
         if (!creation || !version) return;
+        const requiresPassword = sharePasswordEnabled.checked;
+        const accessCode = shareAccessCode.value.trim();
+        const accessCodeLength = Array.from(accessCode).length;
+        if (requiresPassword && (accessCodeLength < 4 || accessCodeLength > 12)) {
+          showMessage("访问密码长度必须为 4–12 个字符。", true);
+          shareAccessCode.focus();
+          return;
+        }
 
+        shareCandidates.innerHTML = '<div class="share-empty">正在生成三个候选分享链接…</div>';
+        shareRefreshButton.disabled = true;
         try {
           const result = await requestJson("/api/shares", {
             method: "POST",
@@ -2335,16 +2412,20 @@
               audioUrl: version.audioUrl || version.streamAudioUrl,
               styleTags: String(creation.style || version.tags || "").split(",").map((item) => item.trim()).filter(Boolean),
               versionLabel: version.label,
-              heroImageUrl: shareHeroImage.value.trim()
+              heroImageUrl: shareHeroImage.value.trim(),
+              accessType: requiresPassword ? "password" : "public_link",
+              accessCode: requiresPassword ? accessCode : undefined
             })
           });
-          renderShareCandidates(result.candidates || []);
+          renderShareCandidates(result.candidates || [], accessCode);
         } catch (error) {
           shareCandidates.innerHTML = `<div class="share-empty">${escapeHtml(error.message)}</div>`;
+        } finally {
+          shareRefreshButton.disabled = false;
         }
       }
 
-      function renderShareCandidates(candidates) {
+      function renderShareCandidates(candidates, accessCode = "") {
         if (!candidates.length) {
           shareCandidates.innerHTML = '<div class="share-empty">没有生成可用候选，请稍后重试。</div>';
           return;
@@ -2355,12 +2436,16 @@
           <article class="share-card">
             <div class="share-card-hero"${heroStyle}>${heroUrl ? "" : "顶部图片留空"}</div>
             <div class="share-card-body">
-              <h3 class="share-card-title">${escapeHtml(candidate.template)}</h3>
+              <div class="share-card-heading">
+                <h3 class="share-card-title">${escapeHtml(candidate.template)}</h3>
+                ${candidate.requiresPassword ? '<span class="share-lock-badge">密码保护</span>' : ""}
+              </div>
               <p class="share-card-text">${escapeHtml(candidate.preview?.inspiration || "打开链接即可试听")}</p>
               <span class="share-link">${escapeHtml(candidate.url)}</span>
-              <div class="share-actions">
-                <button class="copy-share" data-url="${escapeHtml(candidate.url)}">复制链接</button>
-                <a href="${escapeHtml(candidate.url)}" target="_blank" rel="noopener">打开预览</a>
+              <div class="share-actions${candidate.requiresPassword ? " protected" : ""}">
+                <button class="copy-share" data-copy-text="${escapeHtml(candidate.url)}">复制链接</button>
+                ${candidate.requiresPassword ? `<button class="copy-password" data-copy-text="${escapeHtml(accessCode)}">复制密码</button>` : ""}
+                <a href="${escapeHtml(candidate.previewUrl || candidate.url)}" target="_blank" rel="noopener">打开预览</a>
               </div>
             </div>
           </article>
@@ -2771,10 +2856,15 @@
       shareButton.addEventListener("click", openShareModal);
       shareCloseButton.addEventListener("click", closeShareModal);
       shareRefreshButton.addEventListener("click", createShareCandidates);
+      sharePasswordEnabled.addEventListener("change", () => {
+        sharePasswordField.hidden = !sharePasswordEnabled.checked;
+        if (sharePasswordEnabled.checked) shareAccessCode.focus();
+        else shareAccessCode.value = "";
+      });
       shareModal.addEventListener("click", (event) => {
         if (event.target === shareModal) closeShareModal();
-        const copyButton = event.target.closest(".copy-share");
-        if (copyButton) copyText(copyButton.dataset.url, copyButton);
+        const copyButton = event.target.closest("[data-copy-text]");
+        if (copyButton) copyText(copyButton.dataset.copyText, copyButton);
       });
 
       versionList.addEventListener("click", (event) => {
