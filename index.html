@@ -2036,8 +2036,6 @@
           line.classList.toggle("active", index === activeIndex);
           line.classList.toggle("future", index > activeIndex);
         });
-        const activeLine = lines[activeIndex];
-        activeLine?.scrollIntoView({ block: "center", behavior: "smooth" });
       }
 
       function currentCreation() {
