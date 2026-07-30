@@ -73,10 +73,19 @@
 
       .logo {
         display: grid;
-        width: 38px;
-        height: 38px;
+        width: 56px;
+        height: 56px;
         place-items: center;
+        overflow: hidden;
         color: #a978ff;
+        background: transparent;
+        border-radius: 0;
+      }
+
+      .logo img {
+        width: 100%;
+        height: 100%;
+        object-fit: cover;
       }
 
       .brand strong {
@@ -324,11 +333,60 @@
         position: relative;
       }
 
+      .image-attachment {
+        position: absolute;
+        left: 14px;
+        bottom: 12px;
+        display: none;
+        align-items: center;
+        gap: 8px;
+        min-height: 42px;
+        max-width: min(360px, calc(100% - 270px));
+        padding: 5px 10px 5px 5px;
+        color: #4d5367;
+        background: #ffffff;
+        border: 1px solid var(--line);
+        border-radius: 999px;
+        box-shadow: 0 8px 18px rgba(24, 27, 45, .08);
+        font-size: 13px;
+      }
+
+      .image-attachment.show {
+        display: inline-flex;
+      }
+
+      .image-attachment img {
+        width: 32px;
+        height: 32px;
+        object-fit: cover;
+        border-radius: 50%;
+        background: #eef0f6;
+      }
+
+      .image-attachment span {
+        min-width: 0;
+        overflow: hidden;
+        text-overflow: ellipsis;
+        white-space: nowrap;
+      }
+
+      .image-attachment button {
+        display: grid;
+        width: 24px;
+        height: 24px;
+        place-items: center;
+        color: #6d7283;
+        background: #f5f6fa;
+        border: 0;
+        border-radius: 50%;
+        cursor: pointer;
+      }
+
       textarea {
         width: 100%;
         min-height: 112px;
         resize: none;
-        padding: 22px 22px 36px;
+        padding: 22px 22px 68px;
         color: #2c3040;
         background: #ffffff;
         border: 1px solid var(--line);
@@ -343,11 +401,74 @@
       }
 
       .counter {
-        position: absolute;
-        right: 22px;
-        bottom: 18px;
         color: #8a91a3;
         font-size: 14px;
+      }
+
+      .prompt-actions {
+        position: absolute;
+        right: 14px;
+        bottom: 12px;
+        display: inline-flex;
+        align-items: center;
+        gap: 10px;
+      }
+
+      .prompt-status {
+        display: none;
+        align-items: center;
+        max-width: 220px;
+        min-height: 34px;
+        padding: 0 12px;
+        overflow: hidden;
+        color: #5e6476;
+        background: #f6f7fb;
+        border: 1px solid var(--line);
+        border-radius: 999px;
+        font-size: 13px;
+        text-overflow: ellipsis;
+        white-space: nowrap;
+      }
+
+      .prompt-status.show {
+        display: inline-flex;
+      }
+
+      .prompt-status.ready {
+        color: #1d7d55;
+        background: #effaf3;
+        border-color: #bdeacd;
+      }
+
+      .prompt-status.error {
+        color: #b42318;
+        background: #fff4f2;
+        border-color: #f5c7c1;
+      }
+
+      .composer-icon-button {
+        display: grid;
+        width: 38px;
+        height: 38px;
+        place-items: center;
+        color: #3f4556;
+        background: #ffffff;
+        border: 1px solid var(--line);
+        border-radius: 50%;
+        cursor: pointer;
+      }
+
+      .composer-icon-button:hover,
+      .composer-icon-button.selected {
+        color: var(--purple);
+        border-color: #a98bff;
+        background: #fbf9ff;
+      }
+
+      .composer-icon-button.recording {
+        color: #b42318;
+        border-color: #ffaaa2;
+        background: #fff4f2;
       }
 
       .style-row {
@@ -356,6 +477,28 @@
         justify-content: space-between;
         gap: 28px;
         margin-top: 24px;
+      }
+
+      .generate-actions {
+        display: flex;
+        align-items: center;
+        gap: 12px;
+      }
+
+      .model-inline-select {
+        min-width: 150px;
+        min-height: 54px;
+        padding: 0 12px;
+        color: #343848;
+        background: #fff;
+        border: 1px solid var(--line);
+        border-radius: 8px;
+        outline: none;
+      }
+
+      .model-inline-select:focus {
+        border-color: var(--purple);
+        box-shadow: 0 0 0 3px rgba(112,72,255,.1);
       }
 
       .style-label {
@@ -908,6 +1051,14 @@
         display: none;
       }
 
+      .inline-api-config {
+        display: none;
+      }
+
+      #creationSettingsButton {
+        display: none;
+      }
+
       .generation-message {
         display: none;
         margin-top: 16px;
@@ -1338,17 +1489,12 @@
       }
       .share-card-title {
         margin: 0 0 8px;
-        font-size: 18px;
-        font-weight: 760;
-      }
-      .share-recommendation {
         display: inline-flex;
-        margin: 0 0 10px;
         padding: 6px 10px;
         color: #7048ff;
         background: #f3eeff;
         border-radius: 999px;
-        font-size: 13px;
+        font-size: 15px;
         font-weight: 760;
       }
       .share-card-text {
@@ -1362,15 +1508,6 @@
         line-height: 1.5;
         -webkit-box-orient: vertical;
         -webkit-line-clamp: 3;
-      }
-      .share-link {
-        display: block;
-        overflow: hidden;
-        margin-bottom: 12px;
-        color: #7048ff;
-        font-size: 13px;
-        text-overflow: ellipsis;
-        white-space: nowrap;
       }
       .share-actions {
         display: grid;
@@ -1627,6 +1764,21 @@
           grid-template-columns: 1fr;
         }
 
+        .style-row,
+        .generate-actions {
+          align-items: stretch;
+          flex-direction: column;
+        }
+
+        .model-inline-select,
+        .generate-actions .primary {
+          width: 100%;
+        }
+
+        .image-attachment {
+          max-width: calc(100% - 150px);
+        }
+
         .inspiration-options {
           grid-template-columns: 1fr;
         }
@@ -1647,11 +1799,7 @@
       <aside class="sidebar">
         <div class="brand">
           <div class="logo">
-            <svg class="icon" viewBox="0 0 24 24" aria-hidden="true">
-              <path d="M9 18V5l12-2v13" />
-              <circle cx="6" cy="18" r="3" />
-              <circle cx="18" cy="16" r="3" />
-            </svg>
+            <img src="73.PNG" alt="自定义 Logo" />
           </div>
           <div>
             <strong>MelodyFlow</strong>
@@ -1716,7 +1864,6 @@
             </div>
           </div>
           <div class="top-actions">
-            <button class="primary generate-button">生成 Demo <svg class="icon" viewBox="0 0 24 24"><path d="M13 2 9 10l-7 3 7 3 4 8 4-8 7-3-7-3z" /></svg></button>
             <button class="ghost-icon" title="打开文件夹"><svg class="icon" viewBox="0 0 24 24"><path d="M3 7h5l2 2h11v9a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2z" /><path d="M3 7V5a2 2 0 0 1 2-2h4l2 2h4" /></svg></button>
           </div>
         </header>
@@ -1724,31 +1871,33 @@
         <section id="creationInputView" class="panel input-panel view" aria-label="输入灵感">
           <h2 class="section-title">1. 输入你的灵感</h2>
           <div class="tools">
-            <button class="tool-button selected"><svg class="icon" viewBox="0 0 24 24"><path d="M4 7V5h16v2M12 5v14M9 19h6" /></svg>文字输入</button>
+            <button id="textInputButton" class="tool-button selected"><svg class="icon" viewBox="0 0 24 24"><path d="M4 7V5h16v2M12 5v14M9 19h6" /></svg>文字输入</button>
             <button id="noInspirationButton" class="tool-button" type="button"><svg class="icon" viewBox="0 0 24 24"><path d="M9 18h6" /><path d="M10 22h4" /><path d="M12 2a7 7 0 0 0-4 12c.7.6 1 1.4 1 2h6c0-.6.3-1.4 1-2A7 7 0 0 0 12 2z" /></svg>无灵感做歌</button>
             <button id="imageUploadButton" class="tool-button" type="button"><svg class="icon" viewBox="0 0 24 24"><rect x="3" y="5" width="18" height="14" rx="2" /><circle cx="8.5" cy="10.5" r="1.5" /><path d="m21 15-5-5L5 19" /></svg>图片上传</button>
-            <button id="speechRecordButton" class="tool-button" type="button"><svg class="icon" viewBox="0 0 24 24"><path d="M12 3a3 3 0 0 0-3 3v6a3 3 0 0 0 6 0V6a3 3 0 0 0-3-3z" /><path d="M19 10v2a7 7 0 0 1-14 0v-2M12 19v3M8 22h8" /></svg><span>语音口述</span></button>
             <button id="humRecordButton" class="tool-button" type="button"><svg class="icon" viewBox="0 0 24 24"><path d="M9 18V5l12-2v13" /><circle cx="6" cy="18" r="3" /></svg><span>哼唱录音</span></button>
           </div>
           <div class="prompt-box">
             <textarea maxlength="1000" placeholder="输入完整歌词，支持段落、主歌和副歌..."></textarea>
-            <span class="counter">0/1000</span>
+            <div id="imageAttachment" class="image-attachment">
+              <img id="imageAttachmentPreview" alt="已上传图片" />
+              <span id="imageAttachmentLabel">图片已上传</span>
+              <button id="clearImageButton" type="button" aria-label="移除图片">×</button>
+            </div>
+            <div class="prompt-actions">
+              <span id="imageUploadStatus" class="prompt-status">图片已上传</span>
+              <span class="counter">0/1000</span>
+              <button id="speechRecordButton" class="composer-icon-button" type="button" title="语音口述" aria-label="语音口述">
+                <svg class="icon" viewBox="0 0 24 24"><path d="M12 3a3 3 0 0 0-3 3v6a3 3 0 0 0 6 0V6a3 3 0 0 0-3-3z" /><path d="M19 10v2a7 7 0 0 1-14 0v-2M12 19v3M8 22h8" /></svg>
+              </button>
+            </div>
           </div>
           <div id="textModeTabs" class="hidden-settings" aria-label="文字生成方式">
             <button class="active" type="button" data-text-mode="lyrics">基于歌词</button>
             <button type="button" data-text-mode="description">基于描述</button>
           </div>
-          <div class="api-config" aria-label="Suno 生成设置">
+          <div class="api-config inline-api-config" aria-label="Suno 生成设置">
             <input id="songTitle" maxlength="100" placeholder="歌曲标题（自定义模式必填）" value="我的灵感 Demo" />
             <input id="callbackUrl" type="url" placeholder="公网回调 URL（本地测试可留空）" />
-            <select id="modelSelect" aria-label="模型版本">
-              <option value="V5_5">V5.5</option>
-              <option value="V5" selected>V5</option>
-              <option value="V4_5ALL">V4.5 All</option>
-              <option value="V4_5PLUS">V4.5 Plus</option>
-              <option value="V4_5">V4.5</option>
-              <option value="V4">V4</option>
-            </select>
             <select id="instrumentalSelect" class="hidden-settings" aria-label="歌曲类型">
               <option value="false" selected>带人声</option>
               <option value="true">纯音乐</option>
@@ -1767,7 +1916,7 @@
             <button id="clearRecordingButton" class="secondary" type="button">清除录音</button>
             <audio id="recordPreview" class="record-audio" controls preload="metadata"></audio>
           </div>
-          <div id="speechPanel" class="speech-panel" aria-live="polite">
+          <div id="speechPanel" class="speech-panel" aria-live="polite" hidden>
             <div class="speech-copy">
               <strong id="speechTitle">语音口述未开始</strong>
               <span id="speechStatus">点击“语音口述”开始，再点击一次结束录音并转文字。</span>
@@ -1777,7 +1926,7 @@
             <pre id="speechText" class="speech-text"></pre>
           </div>
           <input id="imageInput" type="file" accept="image/png,image/jpeg,image/webp" hidden />
-          <div id="imagePanel" class="image-panel" aria-live="polite">
+          <div id="imagePanel" class="image-panel" aria-live="polite" hidden>
             <img id="imagePreview" class="image-preview" alt="上传图片预览" />
             <div class="image-caption-copy">
               <strong id="imageCaptionTitle">图片尚未分析</strong>
@@ -1799,7 +1948,17 @@
                 <button class="chip">更多⌄</button>
               </div>
             </div>
-            <button class="primary generate-button">生成 Demo <svg class="icon" viewBox="0 0 24 24"><path d="M13 2 9 10l-7 3 7 3 4 8 4-8 7-3-7-3z" /></svg></button>
+            <div class="generate-actions">
+              <select id="modelSelect" class="model-inline-select" aria-label="模型版本">
+                <option value="V5_5">V5.5</option>
+                <option value="V5" selected>V5</option>
+                <option value="V4_5ALL">V4.5 All</option>
+                <option value="V4_5PLUS">V4.5 Plus</option>
+                <option value="V4_5">V4.5</option>
+                <option value="V4">V4</option>
+              </select>
+              <button class="primary generate-button">生成 Demo <svg class="icon" viewBox="0 0 24 24"><path d="M13 2 9 10l-7 3 7 3 4 8 4-8 7-3-7-3z" /></svg></button>
+            </div>
           </div>
         </section>
 
@@ -1924,7 +2083,6 @@
                 <span>不生成歌词演唱，重点保留旋律、编曲和氛围。</span>
               </button>
             </div>
-            <p id="settingsRuleNote" class="settings-note"></p>
           </section>
           <section class="setting-group">
             <div class="setting-group-title">流派方向</div>
@@ -1960,14 +2118,8 @@
         </div>
         <div class="share-body">
           <div class="share-config">
-            <label class="wide">顶部图片 URL（可留空）
-              <input id="shareHeroImage" type="url" placeholder="留空时自动从分享图打包中随机抽取" />
-            </label>
             <label>创作者昵称
               <input id="shareCreatorName" maxlength="40" value="Echo" />
-            </label>
-            <label>创作来源
-              <input id="shareSource" maxlength="80" value="文字＋哼唱灵感" />
             </label>
             <label class="wide">一句话灵感说明
               <textarea id="shareInspiration" maxlength="180" placeholder="例如：来自一段文字、一张照片和一段哼唱灵感"></textarea>
@@ -2046,7 +2198,6 @@
       const songTypeOptions = document.getElementById("songTypeOptions");
       const settingsStyleOptions = document.getElementById("settingsStyleOptions");
       const customStyleInput = document.getElementById("customStyleInput");
-      const settingsRuleNote = document.getElementById("settingsRuleNote");
       const messageBox = document.getElementById("generationMessage");
       const statusEl = document.getElementById("generationStatus");
       const dateEl = document.getElementById("generationDate");
@@ -2076,9 +2227,7 @@
       const shareModal = document.getElementById("shareModal");
       const shareCloseButton = document.getElementById("shareCloseButton");
       const shareCandidates = document.getElementById("shareCandidates");
-      const shareHeroImage = document.getElementById("shareHeroImage");
       const shareCreatorName = document.getElementById("shareCreatorName");
-      const shareSource = document.getElementById("shareSource");
       const shareInspiration = document.getElementById("shareInspiration");
       const shareRefreshButton = document.getElementById("shareRefreshButton");
       const pageTitle = document.getElementById("pageTitle");
@@ -2091,6 +2240,7 @@
       const myCreationsNav = document.getElementById("myCreationsNav");
       const createFromHistoryButton = document.getElementById("createFromHistoryButton");
       const newVersionButton = document.getElementById("newVersionButton");
+      const textInputButton = document.getElementById("textInputButton");
       const imageUploadButton = document.getElementById("imageUploadButton");
       const imageInput = document.getElementById("imageInput");
       const imagePanel = document.getElementById("imagePanel");
@@ -2098,6 +2248,11 @@
       const imageCaptionTitle = document.getElementById("imageCaptionTitle");
       const imageCaptionText = document.getElementById("imageCaptionText");
       const imageCaptionJson = document.getElementById("imageCaptionJson");
+      const imageUploadStatus = document.getElementById("imageUploadStatus");
+      const imageAttachment = document.getElementById("imageAttachment");
+      const imageAttachmentPreview = document.getElementById("imageAttachmentPreview");
+      const imageAttachmentLabel = document.getElementById("imageAttachmentLabel");
+      const clearImageButton = document.getElementById("clearImageButton");
       const noInspirationButton = document.getElementById("noInspirationButton");
       const noInspirationModal = document.getElementById("noInspirationModal");
       const noInspirationCloseButton = document.getElementById("noInspirationCloseButton");
@@ -2126,6 +2281,8 @@
       let currentVersionId = creations[0]?.versions.at(-1)?.id || null;
       let pendingMode = "new";
       let pendingGenerationOptions = null;
+      let pendingSettingsAction = "generate";
+      let pendingFeature = "";
       let textGenerationMode = "lyrics";
       const creationSettings = {
         textMode: "lyrics",
@@ -2241,7 +2398,8 @@
       });
       creationSettingsConfirmButton.addEventListener("click", continueAfterCreationSettings);
 
-      noInspirationButton.addEventListener("click", () => showMessage("已切换到无灵感做歌。点击“生成 Demo”后先确认创作设置，再回答 3 个问题。"));
+      textInputButton.addEventListener("click", () => openCreationSettingsModal({ action: "feature", feature: "text" }));
+      noInspirationButton.addEventListener("click", () => openCreationSettingsModal({ action: "feature", feature: "inspiration" }));
       noInspirationCloseButton.addEventListener("click", closeNoInspirationModal);
       noInspirationBackButton.addEventListener("click", () => {
         if (noInspirationStep > 0) {
@@ -2261,32 +2419,29 @@
         });
       });
 
-      document.querySelectorAll(".tool-button").forEach((button) => {
-        button.addEventListener("click", () => {
-          document.querySelectorAll(".tool-button").forEach((item) => item.classList.remove("selected"));
-          button.classList.add("selected");
-        });
-      });
-
       humRecordButton.addEventListener("click", () => {
         if (mediaRecorder?.state === "recording") {
           stopHumRecording();
         } else {
-          startHumRecording();
+          openCreationSettingsModal({ action: "feature", feature: "hum" });
         }
       });
 
       clearRecordingButton.addEventListener("click", clearHumRecording);
-      imageUploadButton.addEventListener("click", () => imageInput.click());
+      imageUploadButton.addEventListener("click", () => {
+        selectFeatureButton(imageUploadButton);
+        imageInput.click();
+      });
       imageInput.addEventListener("change", async () => {
         const file = imageInput.files?.[0];
         if (file) await handleImageUpload(file);
       });
+      clearImageButton.addEventListener("click", clearImageAttachment);
       speechRecordButton.addEventListener("click", () => {
         if (speechRecorder?.state === "recording") {
           stopSpeechRecording();
         } else {
-          startSpeechRecording();
+          openCreationSettingsModal({ action: "feature", feature: "speech" });
         }
       });
       clearSpeechButton.addEventListener("click", clearSpeechRecording);
@@ -2512,11 +2667,6 @@
         customStyleInput.value = creationSettings.customStyle;
         document.getElementById("instrumentalSelect").value = String(creationSettings.instrumental);
         setTextGenerationMode(creationSettings.textMode);
-        settingsRuleNote.textContent = creationSettings.instrumental
-          ? "纯音乐模式会使用自定义模式：customMode=true、instrumental=true，并把描述合并到流派方向里。"
-          : (creationSettings.textMode === "description"
-            ? "描述模式会使用 customMode=false、instrumental=false，Suno 会自动生成歌词。"
-            : "歌词模式会使用 customMode=true、instrumental=false，输入内容会作为完整歌词。");
         syncCreationSettingsSummary();
       }
 
@@ -2528,8 +2678,11 @@
 
       function openCreationSettingsModal(options = {}) {
         pendingGenerationOptions = options;
+        pendingSettingsAction = options.action || "generate";
+        pendingFeature = options.feature || "";
         updateCreationSettingsFromUi();
         syncCreationSettingsUi();
+        creationSettingsConfirmButton.firstChild.textContent = pendingSettingsAction === "feature" ? "确认并继续 " : "开始做歌 ";
         showCreationSettingsMessage("");
         creationSettingsModal.classList.add("show");
       }
@@ -2540,18 +2693,62 @@
 
       async function continueAfterCreationSettings() {
         updateCreationSettingsFromUi();
+        if (!document.getElementById("songTitle").value.trim()) {
+          document.getElementById("songTitle").value = "我的灵感 Demo";
+        }
         if (!selectedStyle()) {
           showCreationSettingsMessage("请至少选择或输入一个流派方向。", true);
           return;
         }
         syncCreationSettingsUi();
         closeCreationSettingsModal();
+        if (pendingSettingsAction === "feature") {
+          continueFeatureSelection(pendingFeature);
+          return;
+        }
         const noInspirationMode = noInspirationButton.classList.contains("selected");
         if (noInspirationMode) {
           openNoInspirationModal();
           return;
         }
         await generateMusic({ ...(pendingGenerationOptions || {}), skipSettings: true });
+      }
+
+      function selectFeatureButton(button) {
+        document.querySelectorAll(".tool-button").forEach((item) => item.classList.remove("selected"));
+        speechRecordButton.classList.remove("selected");
+        button?.classList.add("selected");
+      }
+
+      function continueFeatureSelection(feature) {
+        if (feature === "image") {
+          selectFeatureButton(imageUploadButton);
+          imageInput.click();
+          return;
+        }
+        if (feature === "image-ready") {
+          selectFeatureButton(imageUploadButton);
+          showMessage("图片创作设置已确认，点击“生成 Demo”开始生成。");
+          return;
+        }
+        if (feature === "hum") {
+          selectFeatureButton(humRecordButton);
+          startHumRecording();
+          return;
+        }
+        if (feature === "speech") {
+          document.querySelectorAll(".tool-button").forEach((item) => item.classList.remove("selected"));
+          speechRecordButton.classList.add("selected");
+          startSpeechRecording();
+          return;
+        }
+        if (feature === "inspiration") {
+          selectFeatureButton(noInspirationButton);
+          showMessage("已切换到无灵感做歌。点击“生成 Demo”后会进入 3 个问题。");
+          return;
+        }
+        selectFeatureButton(textInputButton);
+        showMessage("已切换到文字输入。");
       }
 
       function setTextGenerationMode(mode) {
@@ -2701,6 +2898,31 @@
         return speechRecordButton.classList.contains("selected");
       }
 
+      function showImageUploadStatus(text, state = "") {
+        imageUploadStatus.textContent = text || "";
+        imageUploadStatus.classList.toggle("show", Boolean(text));
+        imageUploadStatus.classList.toggle("ready", state === "ready");
+        imageUploadStatus.classList.toggle("error", state === "error");
+      }
+
+      function showImageAttachment(label = "图片已上传") {
+        if (imageDataUrl) imageAttachmentPreview.src = imageDataUrl;
+        imageAttachmentLabel.textContent = label;
+        imageAttachment.classList.add("show");
+      }
+
+      function clearImageAttachment(event) {
+        event?.stopPropagation();
+        imageCaption = null;
+        imageDataUrl = "";
+        imageInput.value = "";
+        imageAttachment.classList.remove("show");
+        imageAttachmentPreview.removeAttribute("src");
+        showImageUploadStatus("");
+        if (isImageMode()) selectFeatureButton(textInputButton);
+        showMessage("已移除上传图片。");
+      }
+
       function fileToImage(file) {
         return new Promise((resolve, reject) => {
           const img = new Image();
@@ -2727,9 +2949,11 @@
       async function handleImageUpload(file, source = "upload") {
         try {
           document.querySelectorAll(".tool-button").forEach((item) => item.classList.remove("selected"));
+          speechRecordButton.classList.remove("selected");
           imageUploadButton.classList.add("selected");
-          imagePanel.classList.add("show");
           imageCaption = null;
+          showImageUploadStatus(source === "paste" ? "正在分析剪切板图片" : "正在分析图片");
+          imageAttachment.classList.remove("show");
           imageCaptionTitle.textContent = source === "paste" ? "正在处理剪切板图片" : "正在处理图片";
           imageCaptionText.textContent = "正在压缩图片并调用多模态模型生成音乐描述……";
           imageCaptionJson.textContent = "";
@@ -2749,10 +2973,14 @@
           imageCaptionTitle.textContent = "图片音乐描述已生成";
           imageCaptionText.textContent = imageCaption.music_caption || "已完成图片理解。";
           imageCaptionJson.textContent = JSON.stringify(imageCaption, null, 2);
+          showImageUploadStatus(source === "paste" ? "剪切板图片已就绪" : "图片已就绪", "ready");
+          showImageAttachment(source === "paste" ? "剪切板图片已上传" : "图片已上传");
           showMessage(`${source === "paste" ? "剪切板图片" : "图片"}已转换为音乐创作 Caption，点击生成 Demo 即可用图片生成歌曲。`);
+          openCreationSettingsModal({ action: "feature", feature: "image-ready" });
         } catch (error) {
           imageCaptionTitle.textContent = "图片分析失败";
           imageCaptionText.textContent = error.message;
+          showImageUploadStatus("图片分析失败", "error");
           showMessage(error.message, true);
         }
       }
@@ -2773,7 +3001,8 @@
           document.querySelectorAll(".tool-button").forEach((item) => item.classList.remove("selected"));
           speechRecordButton.classList.add("selected", "recording");
           speechPanel.classList.add("show");
-          speechRecordButton.querySelector("span").textContent = "停止口述";
+          speechRecordButton.title = "停止口述";
+          speechRecordButton.setAttribute("aria-label", "停止口述");
           speechTitle.textContent = "正在录音";
           speechStatus.textContent = "请直接描述歌曲主题、情绪、画面或想要表达的故事。";
           speechText.textContent = "";
@@ -2790,7 +3019,8 @@
             speechAudioUrl = URL.createObjectURL(speechAudioBlob);
             speechPreview.src = speechAudioUrl;
             speechRecordButton.classList.remove("recording");
-            speechRecordButton.querySelector("span").textContent = "重新口述";
+            speechRecordButton.title = "重新口述";
+            speechRecordButton.setAttribute("aria-label", "重新口述");
             await transcribeSpeech();
           });
 
@@ -2850,7 +3080,8 @@
         speechTitle.textContent = "语音口述未开始";
         speechStatus.textContent = "点击“语音口述”开始，再点击一次结束录音并转文字。";
         speechRecordButton.classList.remove("recording");
-        speechRecordButton.querySelector("span").textContent = "语音口述";
+        speechRecordButton.title = "语音口述";
+        speechRecordButton.setAttribute("aria-label", "语音口述");
         showMessage("已清除当前语音口述。");
       }
 
@@ -3053,13 +3284,13 @@
               title: version.title || creation.title,
               inspiration: shareInspiration.value.trim() || creation.prompt || "来自一段灵感创作",
               lyrics: String(version.prompt || creation.prompt || "").split(/\n+/).map(cleanLyricText).filter(Boolean).join("\n"),
-              source: shareSource.value.trim() || "文字＋哼唱灵感",
+              source: "",
               creatorName: shareCreatorName.value.trim() || "Echo",
               creatorRole: "独立音乐人",
               audioUrl: version.audioUrl || version.streamAudioUrl,
               styleTags: String(creation.style || version.tags || "").split(",").map((item) => item.trim()).filter(Boolean),
               versionLabel: version.label,
-              heroImageUrl: shareHeroImage.value.trim()
+              heroImageUrl: ""
             })
           });
           renderShareCandidates(result.candidates || []);
@@ -3077,10 +3308,8 @@
           <article class="share-card">
             <div class="share-card-hero"${candidate.preview?.heroImageUrl ? ` style="background-image:url('${String(candidate.preview.heroImageUrl).replaceAll("'", "%27")}')"` : ""}>${candidate.preview?.heroImageUrl ? "" : "顶部图片留空"}</div>
             <div class="share-card-body">
-              <h3 class="share-card-title">${escapeHtml(candidate.template)}</h3>
-              ${candidate.preview?.recommendation ? `<span class="share-recommendation">${escapeHtml(candidate.preview.recommendation)}</span>` : ""}
+              <h3 class="share-card-title">${escapeHtml(candidate.preview?.recommendation || candidate.template || "推荐语")}</h3>
               <p class="share-card-text">${escapeHtml(normalizeSharePreviewText(candidate.preview?.inspiration || "打开链接即可试听"))}</p>
-              <span class="share-link">${escapeHtml(candidate.url)}</span>
               <div class="share-actions">
                 <button class="copy-share" data-url="${escapeHtml(candidate.url)}">复制链接</button>
                 <a href="${escapeHtml(candidate.url)}" target="_blank" rel="noopener">打开预览</a>
@@ -3135,6 +3364,12 @@
         cover.style.backgroundImage = "";
         statusEl.textContent = "等待生成";
         dateEl.textContent = "尚未生成";
+        imageCaption = null;
+        imageDataUrl = "";
+        imageInput.value = "";
+        imageAttachment.classList.remove("show");
+        imageAttachmentPreview.removeAttribute("src");
+        showImageUploadStatus("");
         renderSyncedLyrics("生成完成后会在这里同步显示歌词");
         updatePlaybackUi();
         clearSpeechRecording();
@@ -3257,6 +3492,7 @@
         const prompt = textarea.value.trim();
         const title = document.getElementById("songTitle").value.trim() || usableTracks[0].title || "未命名歌曲";
         const style = selectedStyle();
+        const instrumental = Boolean(creationSettings.instrumental);
         let creation = pendingMode === "append" ? creations.find((item) => item.id === currentCreationId) : null;
 
         if (!creation) {
