@@ -237,6 +237,74 @@ test("Render 环境始终使用正式服务域名生成分享链接", async () =
   }
 });
 
+test("Render 环境的生成回调和上传地址不会回退到旧 ngrok", async () => {
+  const previousRenderExternalUrl = process.env.RENDER_EXTERNAL_URL;
+  const previousPublicBaseUrl = process.env.PUBLIC_BASE_URL;
+  const previousSunoApiKey = process.env.SUNO_API_KEY;
+  const originalFetch = global.fetch;
+  const upstreamRequests = [];
+
+  process.env.RENDER_EXTERNAL_URL = "https://melodyflow-demo.onrender.com/";
+  process.env.PUBLIC_BASE_URL = "https://offline-tunnel.ngrok-free.dev";
+  process.env.SUNO_API_KEY = "test-suno-api-key";
+  global.fetch = async (url, options = {}) => {
+    if (String(url).startsWith(baseUrl)) return originalFetch(url, options);
+    upstreamRequests.push({
+      url: String(url),
+      body: JSON.parse(options.body || "{}")
+    });
+    return new Response(JSON.stringify({
+      code: 200,
+      data: { taskId: `task-${upstreamRequests.length}` }
+    }), {
+      status: 200,
+      headers: { "Content-Type": "application/json" }
+    });
+  };
+
+  try {
+    const generateResponse = await postJson("/api/suno/generate", {
+      prompt: "一段温暖的城市流行歌曲描述",
+      generationType: "description",
+      customMode: false,
+      instrumental: false,
+      callbackUrl: "https://stale-client-tunnel.ngrok-free.dev/api/suno/callback"
+    });
+    assert.equal(generateResponse.status, 200);
+
+    const uploadResponse = await postJson("/api/suno/upload-cover", {
+      audioBase64: "dGVzdA==",
+      mimeType: "audio/webm",
+      durationSeconds: 12,
+      title: "哼唱测试",
+      tags: "Pop",
+      callbackUrl: "https://stale-client-tunnel.ngrok-free.dev/api/suno/callback"
+    });
+    assert.equal(uploadResponse.status, 200);
+
+    assert.equal(upstreamRequests.length, 2);
+    for (const request of upstreamRequests) {
+      assert.equal(
+        request.body.callBackUrl,
+        "https://melodyflow-demo.onrender.com/api/suno/callback"
+      );
+      assert.doesNotMatch(JSON.stringify(request.body), /ngrok-free\.dev/);
+    }
+    assert.match(
+      upstreamRequests[1].body.uploadUrl,
+      /^https:\/\/melodyflow-demo\.onrender\.com\/uploads\/hum-/
+    );
+  } finally {
+    global.fetch = originalFetch;
+    if (previousRenderExternalUrl === undefined) delete process.env.RENDER_EXTERNAL_URL;
+    else process.env.RENDER_EXTERNAL_URL = previousRenderExternalUrl;
+    if (previousPublicBaseUrl === undefined) delete process.env.PUBLIC_BASE_URL;
+    else process.env.PUBLIC_BASE_URL = previousPublicBaseUrl;
+    if (previousSunoApiKey === undefined) delete process.env.SUNO_API_KEY;
+    else process.env.SUNO_API_KEY = previousSunoApiKey;
+  }
+});
+
 test("密码分享只在有效 Cookie 下返回内容", async () => {
   const accessCode = "安全42ab";
   const createResponse = await postJson("/api/shares", sharePayload({
