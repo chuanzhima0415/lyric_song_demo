@@ -83,7 +83,7 @@ const SONG_ANALYSIS_PROMPT = `# 歌曲解读与推荐语生成
 2. **内容**：结合歌词概括歌曲表达的主题、故事和核心情绪。
 3. **BPM**：根据音频估计歌曲速度，输出整数；无法稳定判断时给出合理区间。
 4. **配乐**：识别最突出的主要乐器、音色或编曲元素。
-5. **推荐语**：基于以上解读生成一句适合分享卡片展示的推荐语。
+5. **推荐语**：基于以上解读生成三句不同的分享卡片推荐语。
 
 ## 判断原则
 
@@ -99,13 +99,14 @@ const SONG_ANALYSIS_PROMPT = `# 歌曲解读与推荐语生成
 
 ## 推荐语要求
 
-- 最多13个汉字，标点也计入长度。
-- 只输出一句，不要换行。
+- 每句最多13个汉字，标点也计入长度。
+- 输出三句，彼此不能只是同义替换，要分别突出不同卖点。
 - 不直接复述歌名。
 - 不使用“这是一首”“带你感受”“值得一听”等模板化表达。
 - 优先突出歌曲最鲜明的情绪、画面或记忆点。
 - 表达自然、有画面感，适合吸引用户点击试听。
 - 不要夸大歌曲内容，也不要引入歌词中不存在的信息。
+- 三句分别建议侧重：画面感、情绪记忆点、音乐听感。
 
 ## 输出格式
 
@@ -121,7 +122,8 @@ const SONG_ANALYSIS_PROMPT = `# 歌曲解读与推荐语生成
   "bpm_confidence": "high / medium / low",
   "instrumentation": ["主要配器1", "主要配器2", "主要配器3"],
   "arrangement_summary": "30字以内的编曲与听感概括",
-  "recommendation": "13个汉字以内的推荐语"
+  "recommendations": ["13个汉字以内的推荐语1", "13个汉字以内的推荐语2", "13个汉字以内的推荐语3"],
+  "recommendation": "13个汉字以内的默认推荐语，取recommendations第一句"
 }`;
 
 fs.mkdirSync(uploadsDir, { recursive: true });
@@ -181,9 +183,6 @@ function shuffledShareImages(count, baseUrl) {
 
 function makeSharePage(share, shareUrl) {
   const title = escapeHtml(share.title || "未命名 Demo");
-  const inspiration = escapeHtml(share.inspiration || "来自一段灵感创作");
-  const cleanLyricLines = String(share.lyrics || "").split(/\n+/).map((line) => line.trim()).filter(Boolean);
-  const lyrics = escapeHtml(cleanLyricLines.join("\n") || "暂无歌词").replace(/\n+/g, "<br>");
   const creatorName = escapeHtml(share.creatorName || "Echo");
   const creatorRole = escapeHtml(share.creatorRole || "独立音乐人");
   const createdAt = escapeHtml((share.createdAt || "").slice(0, 10));
@@ -197,6 +196,7 @@ function makeSharePage(share, shareUrl) {
   const instrumentText = analysis.instrumentation.join(" · ") || "人声 · 编曲";
   const moodText = analysis.mood.join(" · ") || "真诚 · 温暖";
   const recommendation = escapeHtml(analysis.recommendation || "灵感正在发光");
+  const songDescription = escapeHtml(`${analysis.content_summary}。${analysis.arrangement_summary}`);
   const comments = (share.comments || []).map((comment) => `
     <article class="comment-item">
       <div><strong>${"★".repeat(Number(comment.rating) || 0)}${"☆".repeat(5 - (Number(comment.rating) || 0))}</strong><span>${escapeHtml(formatSeconds(comment.timeSeconds))}</span></div>
@@ -260,11 +260,7 @@ function makeSharePage(share, shareUrl) {
       .analysis-item:last-child { border-right: 0; }
       .analysis-item strong { display: block; margin-bottom: 7px; color: #5e3bd1; font-size: 13px; }
       .analysis-item span { display: block; color: #17152a; line-height: 1.35; font-size: 15px; }
-      .summary { margin: -8px 0 20px; color: #5c6274; line-height: 1.7; }
       .description-box { margin-bottom: 18px; padding: 18px; color: #343244; background: linear-gradient(135deg, #fff, #fbf8ff); border: 1px solid #ece6ff; border-radius: 20px; line-height: 1.8; white-space: pre-wrap; }
-      .lyrics-full { margin-top: 12px; }
-      .lyrics-full summary { color: #7048ff; cursor: pointer; font-weight: 760; list-style-position: inside; }
-      .lyrics { padding: 12px 0 0; color: #333849; line-height: 1.8; }
       .creator { display: flex; align-items: center; gap: 14px; padding: 0 0 22px; }
       .avatar { width: 54px; height: 54px; border-radius: 50%; background: linear-gradient(135deg, #9be8dc, #222947); }
       .creator strong, .creator span { display: block; }
@@ -333,13 +329,8 @@ function makeSharePage(share, shareUrl) {
             <div class="analysis-item"><strong>配器</strong><span>${escapeHtml(instrumentText)}</span></div>
             <div class="analysis-item"><strong>情绪</strong><span>${escapeHtml(moodText)}</span></div>
           </div>
-          <p class="summary">${escapeHtml(analysis.content_summary)}。${escapeHtml(analysis.arrangement_summary)}</p>
           <h2 class="section-title">歌曲描述</h2>
-          <div class="description-box">${inspiration}</div>
-          <details class="lyrics-full">
-            <summary>查看完整歌词</summary>
-            <div class="lyrics">${lyrics}</div>
-          </details>
+          <div class="description-box">${songDescription}</div>
           <details class="feedback-entry">
             <summary>反馈修改意见</summary>
             <section class="feedback" aria-label="歌曲反馈">
@@ -532,6 +523,7 @@ function listFromValue(value, fallback = []) {
 function fallbackSongAnalysis({ lyrics = "", styleTags = [] } = {}) {
   const firstLyric = String(lyrics || "").split(/\n+/).map((line) => line.trim()).find(Boolean) || "灵感在旋律里慢慢展开";
   const primary = listFromValue(styleTags, ["流行"])[0] || "流行";
+  const baseRecommendation = truncateText(firstLyric, 13) || "灵感正在发光";
   return {
     primary_genre: primary.replace(/\s+\w+$/, "") || primary,
     secondary_genre: "",
@@ -542,13 +534,29 @@ function fallbackSongAnalysis({ lyrics = "", styleTags = [] } = {}) {
     bpm_confidence: "low",
     instrumentation: ["人声", "鼓组", "合成器"],
     arrangement_summary: "旋律围绕情绪逐步铺开",
-    recommendation: truncateText(firstLyric, 13) || "灵感正在发光"
+    recommendations: [
+      baseRecommendation,
+      "旋律里藏着心事",
+      "情绪随节奏铺开"
+    ],
+    recommendation: baseRecommendation
   };
 }
 
 function normalizeSongAnalysis(value, fallback) {
   const analysis = value && typeof value === "object" ? value : {};
   const bpm = Number.parseInt(analysis.bpm, 10);
+  const rawRecommendations = listFromValue(analysis.recommendations, []);
+  if (analysis.recommendation) rawRecommendations.push(analysis.recommendation);
+  const fallbackRecommendations = listFromValue(fallback.recommendations, [fallback.recommendation]).filter(Boolean);
+  const recommendations = [...rawRecommendations, ...fallbackRecommendations]
+    .map((item) => truncateText(item, 13))
+    .filter(Boolean)
+    .filter((item, index, list) => list.indexOf(item) === index)
+    .slice(0, 3);
+  while (recommendations.length < 3) {
+    recommendations.push(["旋律里藏着心事", "情绪随节奏铺开", "听见灵感生长"][recommendations.length]);
+  }
   return {
     primary_genre: String(analysis.primary_genre || fallback.primary_genre || "流行").trim(),
     secondary_genre: String(analysis.secondary_genre || fallback.secondary_genre || "").trim(),
@@ -559,7 +567,8 @@ function normalizeSongAnalysis(value, fallback) {
     bpm_confidence: ["high", "medium", "low"].includes(analysis.bpm_confidence) ? analysis.bpm_confidence : "low",
     instrumentation: listFromValue(analysis.instrumentation, fallback.instrumentation).slice(0, 3),
     arrangement_summary: truncateText(analysis.arrangement_summary || fallback.arrangement_summary, 30),
-    recommendation: truncateText(analysis.recommendation || fallback.recommendation || "灵感正在发光", 13)
+    recommendations,
+    recommendation: recommendations[0]
   };
 }
 
@@ -1002,6 +1011,15 @@ app.post("/api/shares", async (req, res, next) => {
       let token = randomToken();
       while (shares[token]) token = randomToken();
       const selectedHeroImageUrl = heroImageUrl || fallbackImages[index] || "";
+      const selectedRecommendation = analysis.recommendations?.[index] || analysis.recommendation;
+      const shareAnalysis = {
+        ...analysis,
+        recommendation: selectedRecommendation,
+        recommendations: [
+          selectedRecommendation,
+          ...(analysis.recommendations || [analysis.recommendation].filter(Boolean)).filter((item) => item !== selectedRecommendation)
+        ].filter(Boolean)
+      };
       const share = {
         token,
         template: variant.name,
@@ -1018,7 +1036,7 @@ app.post("/api/shares", async (req, res, next) => {
         styleTags: normalizedStyleTags,
         versionLabel,
         heroImageUrl: selectedHeroImageUrl,
-        analysis,
+        analysis: shareAnalysis,
         comments: [],
         createdAt: new Date().toISOString()
       };
