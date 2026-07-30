@@ -7,7 +7,9 @@ const { after, before, test } = require("node:test");
 
 const testDataDir = fs.mkdtempSync(path.join(os.tmpdir(), "melodyflow-share-test-"));
 const testSharesFile = path.join(testDataDir, "shares.json");
+const testProfileFile = path.join(testDataDir, "profile.json");
 const testShareImagesDir = path.join(testDataDir, "share-images");
+const testAvatarImagesDir = path.join(testDataDir, "profile-images");
 const testSecret = "test-share-session-secret-with-more-than-32-characters";
 const testPng = Buffer.from(
   "iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAQAAAC1HAwCAAAAC0lEQVR42mNk+A8AAQUBAScY42YAAAAASUVORK5CYII=",
@@ -19,15 +21,25 @@ const testShareImageNames = [
   "候选图片 3.png",
   "候选图片 4.png"
 ];
+const testAvatarImageNames = Array.from(
+  { length: 7 },
+  (_, index) => `头像 ${index + 1}.png`
+);
 
 fs.mkdirSync(testShareImagesDir, { recursive: true });
+fs.mkdirSync(testAvatarImagesDir, { recursive: true });
 for (const filename of testShareImageNames) {
   fs.writeFileSync(path.join(testShareImagesDir, filename), testPng);
 }
+for (const filename of testAvatarImageNames) {
+  fs.writeFileSync(path.join(testAvatarImagesDir, filename), testPng);
+}
 
 process.env.SHARES_FILE = testSharesFile;
+process.env.PROFILE_FILE = testProfileFile;
 process.env.UPLOADS_DIR = path.join(testDataDir, "uploads");
 process.env.SHARE_IMAGES_DIR = testShareImagesDir;
+process.env.AVATAR_IMAGES_DIR = testAvatarImagesDir;
 process.env.SHARE_SESSION_SECRET = testSecret;
 process.env.PUBLIC_BASE_URL = "http://test.invalid";
 process.env.DASHSCOPE_API_KEY = "";
@@ -67,6 +79,16 @@ async function postJson(url, body, cookie = "") {
   });
 }
 
+async function putJson(url, body) {
+  return fetch(`${baseUrl}${url}`, {
+    method: "PUT",
+    headers: {
+      "Content-Type": "application/json"
+    },
+    body: JSON.stringify(body)
+  });
+}
+
 async function deleteJson(url, cookie = "") {
   return fetch(`${baseUrl}${url}`, {
     method: "DELETE",
@@ -94,12 +116,19 @@ test("首页同时保留功能分支入口和 main 分享能力", async () => {
 
   assert.equal(response.status, 200);
   for (const requiredMarker of [
+    "有效期至 2026-08-30",
+    'id="profileModal"',
+    'id="profileAvatarOptions"',
+    'requestJson("/api/profile"',
     'id="creationSettingsModal"',
     'id="noInspirationModal"',
     'id="adjustModal"',
     'id="shareSource"',
     'id="sharePasswordEnabled"',
     'id="shareAccessCode"',
+    'noInspirationButton.addEventListener("click", () => startNoInspirationFlow())',
+    "noInspirationQuestionsComplete: true",
+    "无灵感做歌描述已生成，请确认是否有歌词、歌曲类型和流派方向。",
     'class="copy-share" data-copy-text="${escapeHtml(candidate.url)}"',
     'class="copy-password" data-copy-text="${escapeHtml(accessCode)}"',
     'candidate.previewUrl || candidate.url',
@@ -110,6 +139,10 @@ test("首页同时保留功能分支入口和 main 分享能力", async () => {
   assert.doesNotMatch(html, /title="灵感库"/);
   assert.doesNotMatch(html, /title="与我协作"/);
   assert.doesNotMatch(html, /\.scrollIntoView\s*\(/);
+  assert.doesNotMatch(
+    html,
+    /noInspirationButton\.addEventListener\("click", \(\) => openCreationSettingsModal/
+  );
 
   const inlineScripts = [...html.matchAll(/<script(?:\s[^>]*)?>([\s\S]*?)<\/script>/gi)];
   assert.ok(inlineScripts.length > 0);
@@ -118,6 +151,138 @@ test("首页同时保留功能分支入口和 main 分享能力", async () => {
       new vm.Script(match[1], { filename: `index-inline-${index}.js` });
     });
   }
+});
+
+test("个人资料默认值和七张头像均可访问", async () => {
+  const response = await fetch(`${baseUrl}/api/profile`);
+  assert.equal(response.status, 200);
+  const body = await response.json();
+
+  assert.deepEqual(body.profile, {
+    name: "Echo",
+    role: "独立音乐人",
+    avatarId: testAvatarImageNames[0],
+    avatarUrl: `/profile-images/${encodeURIComponent(testAvatarImageNames[0])}`
+  });
+  assert.equal(body.avatars.length, 7);
+  assert.deepEqual(
+    body.avatars.map((avatar) => avatar.id),
+    testAvatarImageNames
+  );
+
+  for (const avatar of body.avatars) {
+    const imageResponse = await fetch(`${baseUrl}${avatar.url}`);
+    assert.equal(imageResponse.status, 200);
+    assert.equal(imageResponse.headers.get("content-type"), "image/png");
+    assert.deepEqual(Buffer.from(await imageResponse.arrayBuffer()), testPng);
+  }
+});
+
+test("保存个人资料会持久化并同步历史分享", async () => {
+  const legacyShare = {
+    token: "profile1",
+    access_type: "public_link",
+    is_active: true,
+    title: "个人资料同步测试",
+    creatorName: "旧昵称",
+    creatorRole: "独立音乐人",
+    audioUrl: "https://audio.example/profile.mp3",
+    styleTags: ["Pop"],
+    comments: [{ id: "comment1", text: "保留评论" }],
+    createdAt: "2026-07-30T00:00:00.000Z"
+  };
+  const protectedLegacyShare = {
+    ...legacyShare,
+    token: "profile2",
+    access_type: "password",
+    access_code_hash: "a".repeat(128),
+    access_code_salt: "b".repeat(32)
+  };
+  fs.writeFileSync(testSharesFile, JSON.stringify({
+    profile1: legacyShare,
+    profile2: protectedLegacyShare
+  }, null, 2));
+
+  for (const invalidBody of [
+    { name: "   ", avatarId: testAvatarImageNames[0] },
+    { name: "a".repeat(41), avatarId: testAvatarImageNames[0] },
+    { name: "有效昵称", avatarId: "../越权头像.png" }
+  ]) {
+    const invalidResponse = await putJson("/api/profile", invalidBody);
+    assert.equal(invalidResponse.status, 400);
+  }
+
+  const updateResponse = await putJson("/api/profile", {
+    name: "  新昵称  ",
+    avatarId: testAvatarImageNames[1]
+  });
+  assert.equal(updateResponse.status, 200);
+  const updateBody = await updateResponse.json();
+  assert.equal(updateBody.updatedShares, 2);
+  assert.deepEqual(updateBody.profile, {
+    name: "新昵称",
+    role: "独立音乐人",
+    avatarId: testAvatarImageNames[1],
+    avatarUrl: `/profile-images/${encodeURIComponent(testAvatarImageNames[1])}`
+  });
+
+  assert.deepEqual(JSON.parse(fs.readFileSync(testProfileFile, "utf8")), {
+    name: "新昵称",
+    role: "独立音乐人",
+    avatarId: testAvatarImageNames[1]
+  });
+  const syncedShares = JSON.parse(fs.readFileSync(testSharesFile, "utf8"));
+  const storedLegacyShare = syncedShares.profile1;
+  const storedProtectedShare = syncedShares.profile2;
+  assert.equal(storedLegacyShare.creatorName, "新昵称");
+  assert.equal(storedLegacyShare.creatorAvatarUrl, updateBody.profile.avatarUrl);
+  assert.deepEqual(storedLegacyShare.comments, legacyShare.comments);
+  assert.equal(storedProtectedShare.creatorName, "新昵称");
+  assert.equal(storedProtectedShare.creatorAvatarUrl, updateBody.profile.avatarUrl);
+  assert.equal(
+    storedProtectedShare.access_code_hash,
+    protectedLegacyShare.access_code_hash
+  );
+  assert.equal(
+    storedProtectedShare.access_code_salt,
+    protectedLegacyShare.access_code_salt
+  );
+  assert.deepEqual(storedProtectedShare.comments, protectedLegacyShare.comments);
+
+  const legacyPageResponse = await fetch(`${baseUrl}/s/profile1`);
+  const legacyPageHtml = await legacyPageResponse.text();
+  assert.equal(legacyPageResponse.status, 200);
+  assert.match(legacyPageHtml, /新昵称/);
+  assert.ok(legacyPageHtml.includes(updateBody.profile.avatarUrl));
+
+  const createResponse = await postJson("/api/shares", sharePayload({
+    creatorName: "本次分享昵称"
+  }));
+  assert.equal(createResponse.status, 200);
+  const { candidates } = await createResponse.json();
+  assert.ok(candidates.every((candidate) => (
+    candidate.preview.creatorName === "本次分享昵称"
+    && candidate.preview.creatorAvatarUrl === updateBody.profile.avatarUrl
+  )));
+
+  const secondUpdateResponse = await putJson("/api/profile", {
+    name: "最终昵称",
+    avatarId: testAvatarImageNames[2]
+  });
+  assert.equal(secondUpdateResponse.status, 200);
+  const secondUpdateBody = await secondUpdateResponse.json();
+  const finalShares = JSON.parse(fs.readFileSync(testSharesFile, "utf8"));
+  for (const candidate of candidates) {
+    assert.equal(finalShares[candidate.token].creatorName, "最终昵称");
+    assert.equal(
+      finalShares[candidate.token].creatorAvatarUrl,
+      secondUpdateBody.profile.avatarUrl
+    );
+  }
+
+  const persistedResponse = await fetch(`${baseUrl}/api/profile`);
+  assert.equal(persistedResponse.status, 200);
+  assert.deepEqual((await persistedResponse.json()).profile, secondUpdateBody.profile);
 });
 
 test("公开分享保持无需密码即可访问", async () => {

@@ -14,10 +14,15 @@ const uploadsDir = process.env.UPLOADS_DIR
   || (storageDir ? path.join(storageDir, "uploads") : path.join(__dirname, "uploads"));
 const dataDir = storageDir ? path.join(storageDir, "data") : path.join(__dirname, "data");
 const sharesFile = process.env.SHARES_FILE || path.join(dataDir, "shares.json");
+const profileFile = process.env.PROFILE_FILE || path.join(dataDir, "profile.json");
 const shareImagesDir = process.env.SHARE_IMAGES_DIR
   || path.join(__dirname, "分享图打包");
+const avatarImagesDir = process.env.AVATAR_IMAGES_DIR
+  || path.join(__dirname, "头像打包");
 const SHARE_ACCESS_TYPE_PUBLIC = "public_link";
 const SHARE_ACCESS_TYPE_PASSWORD = "password";
+const PROFILE_ROLE = "独立音乐人";
+const DEFAULT_PROFILE_NAME = "Echo";
 const SHARE_UNLOCK_TTL_MS = 24 * 60 * 60 * 1000;
 const SHARE_UNLOCK_WINDOW_MS = 10 * 60 * 1000;
 const SHARE_UNLOCK_MAX_FAILURES = 5;
@@ -179,6 +184,7 @@ const SONG_ANALYSIS_PROMPT = `# 歌曲解读与推荐语生成
 fs.mkdirSync(uploadsDir, { recursive: true });
 fs.mkdirSync(dataDir, { recursive: true });
 fs.mkdirSync(path.dirname(sharesFile), { recursive: true });
+fs.mkdirSync(path.dirname(profileFile), { recursive: true });
 
 app.set("trust proxy", 1);
 app.use(express.json({ limit: "25mb" }));
@@ -196,6 +202,11 @@ app.use("/share-images", express.static(shareImagesDir, {
   fallthrough: true,
   index: false
 }));
+app.use("/profile-images", express.static(avatarImagesDir, {
+  dotfiles: "deny",
+  fallthrough: true,
+  index: false
+}));
 app.use(express.static(__dirname));
 
 function readShares() {
@@ -208,6 +219,70 @@ function readShares() {
 
 function writeShares(shares) {
   fs.writeFileSync(sharesFile, JSON.stringify(shares, null, 2));
+}
+
+function availableAvatarIds() {
+  try {
+    return fs.readdirSync(avatarImagesDir, { withFileTypes: true })
+      .filter((entry) => (
+        entry.isFile()
+        && SHARE_IMAGE_EXTENSIONS.has(path.extname(entry.name).toLowerCase())
+      ))
+      .map((entry) => entry.name)
+      .sort();
+  } catch {
+    return [];
+  }
+}
+
+function avatarUrlForId(avatarId = "") {
+  return avatarId ? `/profile-images/${encodeURIComponent(avatarId)}` : "";
+}
+
+function normalizeStoredProfile(value = {}) {
+  const avatarIds = availableAvatarIds();
+  const storedName = String(value.name || "").trim();
+  const nameLength = Array.from(storedName).length;
+  const name = nameLength >= 1 && nameLength <= 40
+    ? storedName
+    : DEFAULT_PROFILE_NAME;
+  const avatarId = avatarIds.includes(value.avatarId)
+    ? value.avatarId
+    : (avatarIds[0] || "");
+  return {
+    name,
+    role: PROFILE_ROLE,
+    avatarId
+  };
+}
+
+function readProfile() {
+  try {
+    return normalizeStoredProfile(JSON.parse(fs.readFileSync(profileFile, "utf8")));
+  } catch {
+    return normalizeStoredProfile();
+  }
+}
+
+function writeProfile(profile) {
+  fs.writeFileSync(profileFile, JSON.stringify(profile, null, 2));
+}
+
+function publicProfile(profile = readProfile()) {
+  return {
+    ...profile,
+    avatarUrl: avatarUrlForId(profile.avatarId)
+  };
+}
+
+function profileResponse(profile = readProfile()) {
+  return {
+    profile: publicProfile(profile),
+    avatars: availableAvatarIds().map((avatarId) => ({
+      id: avatarId,
+      url: avatarUrlForId(avatarId)
+    }))
+  };
 }
 
 function normalizeBaseUrl(value = "") {
@@ -442,8 +517,12 @@ function publicShare(share) {
     lyrics: _lyrics,
     ...safeShare
   } = share;
+  const profile = publicProfile();
   return {
     ...safeShare,
+    creatorName: safeShare.creatorName || profile.name,
+    creatorRole: safeShare.creatorRole || profile.role,
+    creatorAvatarUrl: safeShare.creatorAvatarUrl || profile.avatarUrl,
     requiresPassword: isPasswordProtected(share)
   };
 }
@@ -570,9 +649,11 @@ function makePasswordPage(token) {
 }
 
 function makeSharePage(share, shareUrl) {
+  const profile = publicProfile();
   const title = escapeHtml(share.title || "未命名 Demo");
-  const creatorName = escapeHtml(share.creatorName || "Echo");
-  const creatorRole = escapeHtml(share.creatorRole || "独立音乐人");
+  const creatorName = escapeHtml(share.creatorName || profile.name);
+  const creatorRole = escapeHtml(share.creatorRole || profile.role);
+  const creatorAvatarUrl = escapeHtml(share.creatorAvatarUrl || profile.avatarUrl);
   const createdAt = escapeHtml((share.createdAt || "").slice(0, 10));
   const styleTags = (share.styleTags || []).slice(0, 4).map((tag) => `<span>${escapeHtml(tag)}</span>`).join("");
   const audioUrl = escapeHtml(share.audioUrl || "");
@@ -614,7 +695,8 @@ function makeSharePage(share, shareUrl) {
       .hero.has-image::before { content: ""; position: absolute; inset: 0; background: linear-gradient(180deg, rgba(19,13,45,.14), rgba(16,10,38,.58)); }
       .hero-main { position: relative; z-index: 1; color: #fff; text-shadow: 0 8px 22px rgba(0,0,0,.22); }
       .hero h1 { max-width: 82%; margin: 0 0 10px; font-size: 38px; line-height: 1.08; letter-spacing: 0; }
-      .creator-line { color: rgba(255,255,255,.86); font-size: 18px; }
+      .creator-line { display: flex; align-items: center; gap: 10px; color: rgba(255,255,255,.86); font-size: 18px; }
+      .creator-avatar { width: 34px; height: 34px; flex: 0 0 auto; object-fit: cover; border: 2px solid rgba(255,255,255,.82); border-radius: 50%; box-shadow: 0 6px 16px rgba(0,0,0,.2); }
       .accent-line { width: 48px; height: 3px; margin: 26px 0 22px; background: #a987ff; border-radius: 99px; }
       .hero-player { display: flex; align-items: center; gap: 16px; }
       .play-pill { display: grid; width: 64px; height: 64px; place-items: center; color: #fff; background: linear-gradient(135deg, #9e5cff, #623cff); border: 0; border-radius: 50%; box-shadow: 0 14px 32px rgba(75, 46, 180, .38); cursor: pointer; }
@@ -695,7 +777,7 @@ function makeSharePage(share, shareUrl) {
           ${share.heroImageUrl ? "" : '<div class="empty-hero">顶部图片留空，可配置插入</div>'}
           <div class="hero-main">
             <h1>${title}</h1>
-            <div class="creator-line">${creatorName} · ${creatorRole}</div>
+            <div class="creator-line">${creatorAvatarUrl ? `<img class="creator-avatar" src="${creatorAvatarUrl}" alt="" />` : ""}<span>${creatorName} · ${creatorRole}</span></div>
             <div class="accent-line"></div>
             <div class="hero-player">
               <button id="playButton" class="play-pill" type="button" aria-label="播放歌曲"><svg viewBox="0 0 24 24"><path d="M8 5v14l11-7z" /></svg></button>
@@ -767,9 +849,10 @@ function makeSharePage(share, shareUrl) {
 }
 
 function makeFeedbackPage(share, shareUrl) {
+  const profile = publicProfile();
   const title = escapeHtml(share.title || "未命名 Demo");
-  const creatorName = escapeHtml(share.creatorName || "Echo");
-  const creatorRole = escapeHtml(share.creatorRole || "独立音乐人");
+  const creatorName = escapeHtml(share.creatorName || profile.name);
+  const creatorRole = escapeHtml(share.creatorRole || profile.role);
   const createdAt = escapeHtml((share.createdAt || "").slice(0, 10));
   const audioUrl = escapeHtml(share.audioUrl || "");
   const heroImageUrl = escapeHtml(share.heroImageUrl || "");
@@ -1705,6 +1788,51 @@ app.post("/api/suno/callback", (req, res) => {
   res.status(200).json({ status: "received" });
 });
 
+app.get("/api/profile", (_req, res) => {
+  res.json(profileResponse());
+});
+
+app.put("/api/profile", (req, res, next) => {
+  try {
+    const name = String(req.body?.name || "").trim();
+    const nameLength = Array.from(name).length;
+    if (nameLength < 1 || nameLength > 40) {
+      return res.status(400).json({ message: "昵称长度必须为 1–40 个字符" });
+    }
+
+    const avatarId = String(req.body?.avatarId || "");
+    const avatarIds = availableAvatarIds();
+    if (!avatarIds.includes(avatarId)) {
+      return res.status(400).json({ message: "请选择有效头像" });
+    }
+
+    const profile = {
+      name,
+      role: PROFILE_ROLE,
+      avatarId
+    };
+    writeProfile(profile);
+
+    const shares = readShares();
+    let updatedShares = 0;
+    for (const share of Object.values(shares)) {
+      if (!share || typeof share !== "object") continue;
+      share.creatorName = profile.name;
+      share.creatorRole = profile.role;
+      share.creatorAvatarUrl = avatarUrlForId(profile.avatarId);
+      updatedShares += 1;
+    }
+    if (updatedShares) writeShares(shares);
+
+    res.json({
+      ...profileResponse(profile),
+      updatedShares
+    });
+  } catch (error) {
+    next(error);
+  }
+});
+
 app.post("/api/shares", async (req, res, next) => {
   try {
     const {
@@ -1712,8 +1840,7 @@ app.post("/api/shares", async (req, res, next) => {
       inspiration,
       lyrics,
       source,
-      creatorName = "Echo",
-      creatorRole = "独立音乐人",
+      creatorName: requestedCreatorName,
       audioUrl,
       styleTags = [],
       versionLabel,
@@ -1722,6 +1849,13 @@ app.post("/api/shares", async (req, res, next) => {
     } = req.body || {};
 
     if (!title || !audioUrl) return res.status(400).json({ message: "title 和 audioUrl 不能为空" });
+    const profile = publicProfile();
+    const creatorName = String(requestedCreatorName || "").trim() || profile.name;
+    const creatorNameLength = Array.from(creatorName).length;
+    if (creatorNameLength > 40) {
+      return res.status(400).json({ message: "创作者昵称最多 40 个字符" });
+    }
+    const creatorRole = profile.role;
     if (![SHARE_ACCESS_TYPE_PUBLIC, SHARE_ACCESS_TYPE_PASSWORD].includes(accessType)) {
       return res.status(400).json({ message: "accessType 仅支持 public_link 或 password" });
     }
@@ -1777,6 +1911,7 @@ app.post("/api/shares", async (req, res, next) => {
         source: source || "文字＋哼唱灵感",
         creatorName,
         creatorRole,
+        creatorAvatarUrl: profile.avatarUrl,
         audioUrl,
         styleTags: normalizedStyleTags,
         versionLabel,
@@ -1798,6 +1933,8 @@ app.post("/api/shares", async (req, res, next) => {
           styleTags: share.styleTags,
           versionLabel: share.versionLabel,
           heroImageUrl: share.heroImageUrl,
+          creatorName: share.creatorName,
+          creatorAvatarUrl: share.creatorAvatarUrl,
           recommendation: share.analysis?.recommendation
         }
       });
