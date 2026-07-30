@@ -186,6 +186,8 @@
         background:
           radial-gradient(circle at 40% 32%, #f1c8ad 0 14%, transparent 15%),
           linear-gradient(135deg, #9be8dc, #1a243c 60%);
+        background-position: center;
+        background-size: cover;
         border: 2px solid rgba(255, 255, 255, 0.22);
       }
 
@@ -1338,6 +1340,56 @@
         border-radius: 8px;
         cursor: pointer;
       }
+      .profile-modal {
+        width: min(560px, 100%);
+        max-height: min(720px, calc(100vh - 48px));
+        overflow: auto;
+        background: #fff;
+        border-radius: 16px;
+        box-shadow: 0 32px 80px rgba(17, 19, 34, .28);
+      }
+      .profile-editor-body {
+        display: grid;
+        gap: 18px;
+        padding: 24px 26px 28px;
+      }
+      .profile-avatar-options {
+        display: grid;
+        grid-template-columns: repeat(7, minmax(0, 1fr));
+        gap: 10px;
+      }
+      .profile-avatar-option {
+        width: 100%;
+        aspect-ratio: 1;
+        overflow: hidden;
+        padding: 0;
+        background: #f3f4f8;
+        border: 2px solid transparent;
+        border-radius: 50%;
+        cursor: pointer;
+      }
+      .profile-avatar-option:hover {
+        border-color: #c7b8ff;
+      }
+      .profile-avatar-option.selected {
+        border-color: var(--purple);
+        box-shadow: 0 0 0 4px rgba(112, 72, 255, .12);
+      }
+      .profile-avatar-option img {
+        display: block;
+        width: 100%;
+        height: 100%;
+        object-fit: cover;
+      }
+      .profile-message {
+        min-height: 20px;
+        margin: -4px 0 0;
+        color: #697082;
+        font-size: 13px;
+      }
+      .profile-message.error {
+        color: #d14141;
+      }
       .share-body {
         padding: 24px 26px 28px;
       }
@@ -1527,12 +1579,23 @@
       .share-card-title {
         margin: 0;
         display: inline-flex;
+        align-items: center;
+        gap: 8px;
         padding: 6px 10px;
         color: #7048ff;
         background: #f3eeff;
         border-radius: 999px;
         font-size: 15px;
         font-weight: 760;
+      }
+      .share-card-avatar {
+        width: 28px;
+        height: 28px;
+        flex: 0 0 auto;
+        object-fit: cover;
+        background: #fff;
+        border: 2px solid #fff;
+        border-radius: 50%;
       }
       .share-card-heading {
         display: flex;
@@ -1734,6 +1797,10 @@
       }
 
       @media (max-width: 860px) {
+        .profile-avatar-options {
+          grid-template-columns: repeat(4, minmax(0, 1fr));
+        }
+
         .app {
           display: block;
           padding: 0;
@@ -1890,13 +1957,13 @@
         <div class="sidebar-bottom">
           <div class="membership">
             <strong>Pro 会员</strong>
-            <span>有效期至 2025-08-20</span>
+            <span>有效期至 2026-08-30</span>
           </div>
-          <button class="profile" title="账户">
-            <div class="avatar"></div>
+          <button id="profileButton" class="profile" title="账户">
+            <div id="profileAvatar" class="avatar"></div>
             <div>
-              <strong>Echo</strong>
-              <span>独立音乐人</span>
+              <strong id="profileName">Echo</strong>
+              <span id="profileRole">独立音乐人</span>
             </div>
             <svg class="icon" viewBox="0 0 24 24" aria-hidden="true"><path d="m6 9 6 6 6-6" /></svg>
           </button>
@@ -2101,6 +2168,31 @@
           <div id="historyGrid" class="history-grid"></div>
         </section>
       </main>
+    </div>
+
+    <div id="profileModal" class="modal-backdrop" role="dialog" aria-modal="true" aria-labelledby="profileModalTitle">
+      <section class="profile-modal">
+        <div class="share-header">
+          <div>
+            <h2 id="profileModalTitle">个人信息</h2>
+            <p>修改昵称和头像后，历史分享也会同步更新。</p>
+          </div>
+          <button id="profileCloseButton" class="share-close" type="button" title="关闭">
+            <svg class="icon" viewBox="0 0 24 24"><path d="M18 6 6 18M6 6l12 12" /></svg>
+          </button>
+        </div>
+        <div class="profile-editor-body share-config">
+          <label class="wide">昵称
+            <input id="profileNameInput" maxlength="40" autocomplete="nickname" />
+          </label>
+          <div class="wide">
+            <div class="setting-group-title">头像</div>
+            <div id="profileAvatarOptions" class="profile-avatar-options" aria-label="选择头像"></div>
+          </div>
+          <p id="profileMessage" class="profile-message wide" role="status" aria-live="polite"></p>
+          <button id="profileSaveButton" class="primary wide" type="button">保存资料</button>
+        </div>
+      </section>
     </div>
 
     <div id="creationSettingsModal" class="modal-backdrop" role="dialog" aria-modal="true" aria-labelledby="creationSettingsTitle">
@@ -2314,6 +2406,16 @@
       const myCreationsNav = document.getElementById("myCreationsNav");
       const createFromHistoryButton = document.getElementById("createFromHistoryButton");
       const newVersionButton = document.getElementById("newVersionButton");
+      const profileButton = document.getElementById("profileButton");
+      const profileAvatar = document.getElementById("profileAvatar");
+      const profileName = document.getElementById("profileName");
+      const profileRole = document.getElementById("profileRole");
+      const profileModal = document.getElementById("profileModal");
+      const profileCloseButton = document.getElementById("profileCloseButton");
+      const profileNameInput = document.getElementById("profileNameInput");
+      const profileAvatarOptions = document.getElementById("profileAvatarOptions");
+      const profileMessage = document.getElementById("profileMessage");
+      const profileSaveButton = document.getElementById("profileSaveButton");
       const textInputButton = document.getElementById("textInputButton");
       const imageUploadButton = document.getElementById("imageUploadButton");
       const imageInput = document.getElementById("imageInput");
@@ -2385,6 +2487,14 @@
       let speechDurationSeconds = 0;
       let speechStartedAt = 0;
       let speechTranscript = "";
+      let profile = {
+        name: "Echo",
+        role: "独立音乐人",
+        avatarId: "",
+        avatarUrl: ""
+      };
+      let profileAvatars = [];
+      let profileDraftAvatarId = "";
       const noInspirationQuestions = [
         {
           key: "environment",
@@ -2473,7 +2583,7 @@
       creationSettingsConfirmButton.addEventListener("click", continueAfterCreationSettings);
 
       textInputButton.addEventListener("click", () => openCreationSettingsModal({ action: "feature", feature: "text" }));
-      noInspirationButton.addEventListener("click", () => openCreationSettingsModal({ action: "feature", feature: "inspiration" }));
+      noInspirationButton.addEventListener("click", () => startNoInspirationFlow());
       noInspirationCloseButton.addEventListener("click", closeNoInspirationModal);
       noInspirationBackButton.addEventListener("click", () => {
         if (noInspirationStep > 0) {
@@ -2511,6 +2621,19 @@
         if (file) await handleImageUpload(file);
       });
       clearImageButton.addEventListener("click", clearImageAttachment);
+      profileButton.addEventListener("click", openProfileModal);
+      profileCloseButton.addEventListener("click", closeProfileModal);
+      profileSaveButton.addEventListener("click", saveProfileFromModal);
+      profileModal.addEventListener("click", (event) => {
+        if (event.target === profileModal) {
+          closeProfileModal();
+          return;
+        }
+        const avatarButton = event.target.closest("[data-avatar-id]");
+        if (!avatarButton) return;
+        profileDraftAvatarId = avatarButton.dataset.avatarId;
+        renderProfileAvatarOptions();
+      });
       speechRecordButton.addEventListener("click", () => {
         if (speechRecorder?.state === "recording") {
           stopSpeechRecording();
@@ -2540,6 +2663,96 @@
 
       function saveCreations() {
         localStorage.setItem(STORAGE_KEY, JSON.stringify(creations));
+      }
+
+      function renderProfile() {
+        profileName.textContent = profile.name || "Echo";
+        profileRole.textContent = profile.role || "独立音乐人";
+        profileAvatar.style.backgroundImage = profile.avatarUrl
+          ? `url("${String(profile.avatarUrl).replaceAll('"', "%22")}")`
+          : "";
+      }
+
+      async function loadProfile() {
+        try {
+          const result = await requestJson("/api/profile");
+          profile = result.profile || profile;
+          profileAvatars = Array.isArray(result.avatars) ? result.avatars : [];
+          renderProfile();
+        } catch (error) {
+          console.warn("个人资料加载失败", error);
+        }
+      }
+
+      function openProfileModal() {
+        profileNameInput.value = profile.name || "Echo";
+        profileDraftAvatarId = profile.avatarId || profileAvatars[0]?.id || "";
+        profileMessage.textContent = "";
+        profileMessage.classList.remove("error");
+        renderProfileAvatarOptions();
+        profileModal.classList.add("show");
+        profileNameInput.focus();
+      }
+
+      function closeProfileModal() {
+        profileModal.classList.remove("show");
+      }
+
+      function renderProfileAvatarOptions() {
+        profileAvatarOptions.innerHTML = profileAvatars.map((avatar, index) => `
+          <button
+            class="profile-avatar-option ${avatar.id === profileDraftAvatarId ? "selected" : ""}"
+            type="button"
+            data-avatar-id="${escapeHtml(avatar.id)}"
+            aria-label="选择头像 ${index + 1}"
+            aria-pressed="${avatar.id === profileDraftAvatarId}"
+          >
+            <img src="${escapeHtml(avatar.url)}" alt="" />
+          </button>
+        `).join("");
+      }
+
+      async function saveProfileFromModal() {
+        const name = profileNameInput.value.trim();
+        const nameLength = Array.from(name).length;
+        if (nameLength < 1 || nameLength > 40) {
+          profileMessage.textContent = "昵称长度必须为 1–40 个字符。";
+          profileMessage.classList.add("error");
+          profileNameInput.focus();
+          return;
+        }
+        if (!profileDraftAvatarId) {
+          profileMessage.textContent = "请选择头像。";
+          profileMessage.classList.add("error");
+          return;
+        }
+
+        profileSaveButton.disabled = true;
+        profileSaveButton.textContent = "保存中…";
+        profileMessage.textContent = "";
+        profileMessage.classList.remove("error");
+        try {
+          const result = await requestJson("/api/profile", {
+            method: "PUT",
+            headers: { "Content-Type": "application/json" },
+            body: JSON.stringify({
+              name,
+              avatarId: profileDraftAvatarId
+            })
+          });
+          profile = result.profile;
+          profileAvatars = Array.isArray(result.avatars) ? result.avatars : profileAvatars;
+          renderProfile();
+          shareCreatorName.value = profile.name || "Echo";
+          closeProfileModal();
+          showMessage(`个人信息已更新，并同步 ${result.updatedShares || 0} 个历史分享。`);
+        } catch (error) {
+          profileMessage.textContent = error.message;
+          profileMessage.classList.add("error");
+        } finally {
+          profileSaveButton.disabled = false;
+          profileSaveButton.textContent = "保存资料";
+        }
       }
 
       function uid(prefix) {
@@ -2759,6 +2972,12 @@
         creationSettingsModal.classList.add("show");
       }
 
+      function startNoInspirationFlow(options = {}) {
+        pendingGenerationOptions = options;
+        selectFeatureButton(noInspirationButton);
+        openNoInspirationModal();
+      }
+
       function closeCreationSettingsModal() {
         creationSettingsModal.classList.remove("show");
       }
@@ -2778,9 +2997,10 @@
           continueFeatureSelection(pendingFeature);
           return;
         }
-        const noInspirationMode = noInspirationButton.classList.contains("selected");
+        const noInspirationMode = noInspirationButton.classList.contains("selected")
+          && !pendingGenerationOptions?.noInspirationQuestionsComplete;
         if (noInspirationMode) {
-          openNoInspirationModal();
+          startNoInspirationFlow(pendingGenerationOptions || {});
           return;
         }
         await generateMusic({ ...(pendingGenerationOptions || {}), skipSettings: true });
@@ -2815,8 +3035,7 @@
           return;
         }
         if (feature === "inspiration") {
-          selectFeatureButton(noInspirationButton);
-          showMessage("已切换到无灵感做歌。点击“生成 Demo”后会进入 3 个问题。");
+          startNoInspirationFlow();
           return;
         }
         selectFeatureButton(textInputButton);
@@ -2930,8 +3149,11 @@
           document.getElementById("songTitle").value = prompt.theme || "无灵感 Demo";
           applyGeneratedStyles(prompt.music_style || []);
           closeNoInspirationModal();
-          showMessage("无灵感做歌描述已生成，正在提交生成任务。");
-          await generateMusic({ skipSettings: true });
+          showMessage("无灵感做歌描述已生成，请确认是否有歌词、歌曲类型和流派方向。");
+          openCreationSettingsModal({
+            ...(pendingGenerationOptions || {}),
+            noInspirationQuestionsComplete: true
+          });
         } catch (error) {
           showNoInspirationMessage(error.message, true);
         } finally {
@@ -3267,6 +3489,7 @@
           showMessage("请先生成一个可播放的 Demo，再创建分享链接。", true);
           return;
         }
+        shareCreatorName.value = profile.name || "Echo";
         shareInspiration.value = creation.prompt || version.prompt || "来自一段文字、图片和哼唱灵感";
         shareCandidates.innerHTML = '<div class="share-empty">配置完成后，点击“生成候选”创建分享链接</div>';
         shareModal.classList.add("show");
@@ -3394,7 +3617,7 @@
             <div class="share-card-hero"${candidate.preview?.heroImageUrl ? ` style="background-image:url('${String(candidate.preview.heroImageUrl).replaceAll("'", "%27")}')"` : ""}>${candidate.preview?.heroImageUrl ? "" : "顶部图片留空"}</div>
             <div class="share-card-body">
               <div class="share-card-heading">
-                <h3 class="share-card-title">${escapeHtml(candidate.preview?.recommendation || candidate.template || "推荐语")}</h3>
+                <h3 class="share-card-title">${candidate.preview?.creatorAvatarUrl ? `<img class="share-card-avatar" src="${escapeHtml(candidate.preview.creatorAvatarUrl)}" alt="" />` : ""}${escapeHtml(candidate.preview?.recommendation || candidate.template || "推荐语")}</h3>
                 ${candidate.requiresPassword ? '<span class="share-lock-badge">密码保护</span>' : ""}
               </div>
               <p class="share-card-text">${escapeHtml(normalizeSharePreviewText(candidate.preview?.inspiration || "打开链接即可试听"))}</p>
@@ -3470,6 +3693,10 @@
 
       async function generateMusic({ appendToCurrent = false, skipSettings = false } = {}) {
         if (!skipSettings) {
+          if (noInspirationButton.classList.contains("selected")) {
+            startNoInspirationFlow({ appendToCurrent });
+            return;
+          }
           openCreationSettingsModal({ appendToCurrent });
           return;
         }
@@ -3901,14 +4128,27 @@
       adjustModal.addEventListener("click", (event) => {
         if (event.target === adjustModal) closeAdjustModal();
       });
-      newVersionButton.addEventListener("click", () => openCreationSettingsModal({ appendToCurrent: true }));
+      newVersionButton.addEventListener("click", () => {
+        if (noInspirationButton.classList.contains("selected")) {
+          startNoInspirationFlow({ appendToCurrent: true });
+          return;
+        }
+        openCreationSettingsModal({ appendToCurrent: true });
+      });
       allVersionsLink.addEventListener("click", (event) => {
         event.preventDefault();
         switchView("history");
       });
-      generateButtons.forEach((button) => button.addEventListener("click", () => openCreationSettingsModal()));
+      generateButtons.forEach((button) => button.addEventListener("click", () => {
+        if (noInspirationButton.classList.contains("selected")) {
+          startNoInspirationFlow();
+          return;
+        }
+        openCreationSettingsModal();
+      }));
 
       syncCreationSettingsUi();
+      loadProfile();
       if (creations.length) {
         renderCreation(creations[0]);
       } else {
