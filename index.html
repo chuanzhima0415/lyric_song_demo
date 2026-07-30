@@ -1740,9 +1740,6 @@
         </div>
         <div class="share-body">
           <div class="share-config">
-            <label class="wide">顶部图片 URL（可留空）
-              <input id="shareHeroImage" type="url" placeholder="留空时分享页顶部显示可配置占位区域" />
-            </label>
             <label>创作者昵称
               <input id="shareCreatorName" maxlength="40" value="Echo" />
             </label>
@@ -1801,7 +1798,6 @@
       const shareModal = document.getElementById("shareModal");
       const shareCloseButton = document.getElementById("shareCloseButton");
       const shareCandidates = document.getElementById("shareCandidates");
-      const shareHeroImage = document.getElementById("shareHeroImage");
       const shareCreatorName = document.getElementById("shareCreatorName");
       const shareSource = document.getElementById("shareSource");
       const shareInspiration = document.getElementById("shareInspiration");
@@ -2412,7 +2408,6 @@
               audioUrl: version.audioUrl || version.streamAudioUrl,
               styleTags: String(creation.style || version.tags || "").split(",").map((item) => item.trim()).filter(Boolean),
               versionLabel: version.label,
-              heroImageUrl: shareHeroImage.value.trim(),
               accessType: requiresPassword ? "password" : "public_link",
               accessCode: requiresPassword ? accessCode : undefined
             })
@@ -2430,26 +2425,30 @@
           shareCandidates.innerHTML = '<div class="share-empty">没有生成可用候选，请稍后重试。</div>';
           return;
         }
-        const heroUrl = shareHeroImage.value.trim();
-        const heroStyle = heroUrl ? ` style="background-image:url('${heroUrl.replaceAll("'", "%27")}')"` : "";
-        shareCandidates.innerHTML = candidates.map((candidate) => `
-          <article class="share-card">
-            <div class="share-card-hero"${heroStyle}>${heroUrl ? "" : "顶部图片留空"}</div>
-            <div class="share-card-body">
-              <div class="share-card-heading">
-                <h3 class="share-card-title">${escapeHtml(candidate.template)}</h3>
-                ${candidate.requiresPassword ? '<span class="share-lock-badge">密码保护</span>' : ""}
+        shareCandidates.innerHTML = candidates.map((candidate) => {
+          const heroUrl = candidate.preview?.heroImageUrl || "";
+          const heroStyle = heroUrl
+            ? ` style="background-image:url('${heroUrl.replaceAll("'", "%27")}')"`
+            : "";
+          return `
+            <article class="share-card">
+              <div class="share-card-hero"${heroStyle}>${heroUrl ? "" : "图片暂不可用"}</div>
+              <div class="share-card-body">
+                <div class="share-card-heading">
+                  <h3 class="share-card-title">${escapeHtml(candidate.template)}</h3>
+                  ${candidate.requiresPassword ? '<span class="share-lock-badge">密码保护</span>' : ""}
+                </div>
+                <p class="share-card-text">${escapeHtml(candidate.preview?.inspiration || "打开链接即可试听")}</p>
+                <span class="share-link">${escapeHtml(candidate.url)}</span>
+                <div class="share-actions${candidate.requiresPassword ? " protected" : ""}">
+                  <button class="copy-share" data-copy-text="${escapeHtml(candidate.url)}">复制链接</button>
+                  ${candidate.requiresPassword ? `<button class="copy-password" data-copy-text="${escapeHtml(accessCode)}">复制密码</button>` : ""}
+                  <a href="${escapeHtml(candidate.previewUrl || candidate.url)}" target="_blank" rel="noopener">打开预览</a>
+                </div>
               </div>
-              <p class="share-card-text">${escapeHtml(candidate.preview?.inspiration || "打开链接即可试听")}</p>
-              <span class="share-link">${escapeHtml(candidate.url)}</span>
-              <div class="share-actions${candidate.requiresPassword ? " protected" : ""}">
-                <button class="copy-share" data-copy-text="${escapeHtml(candidate.url)}">复制链接</button>
-                ${candidate.requiresPassword ? `<button class="copy-password" data-copy-text="${escapeHtml(accessCode)}">复制密码</button>` : ""}
-                <a href="${escapeHtml(candidate.previewUrl || candidate.url)}" target="_blank" rel="noopener">打开预览</a>
-              </div>
-            </div>
-          </article>
-        `).join("");
+            </article>
+          `;
+        }).join("");
       }
 
       function switchView(view) {
