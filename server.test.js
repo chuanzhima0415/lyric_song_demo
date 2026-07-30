@@ -2,6 +2,7 @@ const assert = require("node:assert/strict");
 const fs = require("node:fs");
 const os = require("node:os");
 const path = require("node:path");
+const vm = require("node:vm");
 const { after, before, test } = require("node:test");
 
 const testDataDir = fs.mkdtempSync(path.join(os.tmpdir(), "melodyflow-share-test-"));
@@ -86,6 +87,38 @@ function sharePayload(overrides = {}) {
 function cookiePair(setCookieHeader) {
   return String(setCookieHeader || "").split(";")[0];
 }
+
+test("首页同时保留功能分支入口和 main 分享能力", async () => {
+  const response = await fetch(`${baseUrl}/`);
+  const html = await response.text();
+
+  assert.equal(response.status, 200);
+  for (const requiredMarker of [
+    'id="creationSettingsModal"',
+    'id="noInspirationModal"',
+    'id="adjustModal"',
+    'id="shareSource"',
+    'id="sharePasswordEnabled"',
+    'id="shareAccessCode"',
+    'class="copy-share" data-copy-text="${escapeHtml(candidate.url)}"',
+    'class="copy-password" data-copy-text="${escapeHtml(accessCode)}"',
+    'candidate.previewUrl || candidate.url',
+    'accessType: requiresPassword ? "password" : "public_link"'
+  ]) {
+    assert.ok(html.includes(requiredMarker), `首页缺少 ${requiredMarker}`);
+  }
+  assert.doesNotMatch(html, /title="灵感库"/);
+  assert.doesNotMatch(html, /title="与我协作"/);
+  assert.doesNotMatch(html, /\.scrollIntoView\s*\(/);
+
+  const inlineScripts = [...html.matchAll(/<script(?:\s[^>]*)?>([\s\S]*?)<\/script>/gi)];
+  assert.ok(inlineScripts.length > 0);
+  for (const [index, match] of inlineScripts.entries()) {
+    assert.doesNotThrow(() => {
+      new vm.Script(match[1], { filename: `index-inline-${index}.js` });
+    });
+  }
+});
 
 test("公开分享保持无需密码即可访问", async () => {
   const createResponse = await postJson("/api/shares", sharePayload({
