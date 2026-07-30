@@ -1307,6 +1307,86 @@
         border-radius: 8px;
       }
 
+      .inspiration-modal {
+        width: min(900px, 100%);
+        max-height: min(780px, calc(100vh - 48px));
+        overflow: auto;
+        background: #fff;
+        border-radius: 16px;
+        box-shadow: 0 32px 80px rgba(17, 19, 34, .28);
+      }
+      .inspiration-body {
+        display: grid;
+        gap: 20px;
+        padding: 24px 26px 28px;
+      }
+      .inspiration-step {
+        display: none;
+      }
+      .inspiration-step.active {
+        display: grid;
+        gap: 14px;
+      }
+      .inspiration-step h3 {
+        margin: 0;
+        font-size: 20px;
+      }
+      .inspiration-step p {
+        margin: 0;
+        color: #697082;
+        line-height: 1.55;
+      }
+      .inspiration-options {
+        display: grid;
+        grid-template-columns: repeat(2, minmax(0, 1fr));
+        gap: 10px;
+      }
+      .inspiration-option {
+        min-height: 82px;
+        padding: 14px;
+        color: #343848;
+        background: #fff;
+        border: 1px solid var(--line);
+        border-radius: 12px;
+        cursor: pointer;
+        text-align: left;
+        line-height: 1.5;
+      }
+      .inspiration-option strong {
+        display: block;
+        margin-bottom: 4px;
+      }
+      .inspiration-option span {
+        color: #697082;
+        font-size: 13px;
+      }
+      .inspiration-option.selected {
+        color: var(--purple);
+        background: #fbf9ff;
+        border-color: #a98bff;
+        box-shadow: 0 0 0 3px rgba(112, 72, 255, .08);
+      }
+      .inspiration-footer {
+        display: flex;
+        align-items: center;
+        justify-content: space-between;
+        gap: 12px;
+        border-top: 1px solid var(--line);
+        padding-top: 18px;
+      }
+      .inspiration-progress {
+        color: #697082;
+        font-size: 14px;
+      }
+      .inspiration-actions {
+        display: flex;
+        gap: 10px;
+      }
+      .inspiration-actions button {
+        min-height: 42px;
+        padding: 0 16px;
+      }
+
       @media (max-width: 1180px) {
         .app {
           grid-template-columns: 92px minmax(0, 1fr);
@@ -1448,6 +1528,19 @@
         .share-candidates {
           grid-template-columns: 1fr;
         }
+
+        .inspiration-options {
+          grid-template-columns: 1fr;
+        }
+
+        .inspiration-footer {
+          align-items: stretch;
+          flex-direction: column;
+        }
+
+        .inspiration-actions button {
+          flex: 1;
+        }
       }
     </style>
   </head>
@@ -1534,6 +1627,7 @@
           <h2 class="section-title">1. 输入你的灵感</h2>
           <div class="tools">
             <button class="tool-button selected"><svg class="icon" viewBox="0 0 24 24"><path d="M4 7V5h16v2M12 5v14M9 19h6" /></svg>文字输入</button>
+            <button id="noInspirationButton" class="tool-button" type="button"><svg class="icon" viewBox="0 0 24 24"><path d="M9 18h6" /><path d="M10 22h4" /><path d="M12 2a7 7 0 0 0-4 12c.7.6 1 1.4 1 2h6c0-.6.3-1.4 1-2A7 7 0 0 0 12 2z" /></svg>无灵感做歌</button>
             <button id="imageUploadButton" class="tool-button" type="button"><svg class="icon" viewBox="0 0 24 24"><rect x="3" y="5" width="18" height="14" rx="2" /><circle cx="8.5" cy="10.5" r="1.5" /><path d="m21 15-5-5L5 19" /></svg>图片上传</button>
             <button id="speechRecordButton" class="tool-button" type="button"><svg class="icon" viewBox="0 0 24 24"><path d="M12 3a3 3 0 0 0-3 3v6a3 3 0 0 0 6 0V6a3 3 0 0 0-3-3z" /><path d="M19 10v2a7 7 0 0 1-14 0v-2M12 19v3M8 22h8" /></svg><span>语音口述</span></button>
             <button id="humRecordButton" class="tool-button" type="button"><svg class="icon" viewBox="0 0 24 24"><path d="M9 18V5l12-2v13" /><circle cx="6" cy="18" r="3" /></svg><span>哼唱录音</span></button>
@@ -1666,7 +1760,10 @@
           <aside id="versionsPanel" class="panel versions-panel is-empty" aria-label="版本管理">
             <div class="panel-head">
               <h2 class="section-title" style="margin:0">3. 版本管理</h2>
-              <button id="newVersionButton" class="secondary" style="color:var(--purple)"><svg class="icon" viewBox="0 0 24 24"><path d="M12 5v14M5 12h14" /></svg>新版本</button>
+              <div class="head-actions">
+                <button id="adjustVersionButton" class="secondary" style="color:var(--purple)"><svg class="icon" viewBox="0 0 24 24"><path d="m14 4 6 6-9 9H5v-6z" /><path d="m13 5 6 6" /></svg>调整</button>
+                <button id="newVersionButton" class="secondary" style="color:var(--purple)"><svg class="icon" viewBox="0 0 24 24"><path d="M12 5v14M5 12h14" /></svg>新版本</button>
+              </div>
             </div>
             <div id="versionList" class="version-list"></div>
             <div class="versions-empty">生成完成后会在这里显示所有版本</div>
@@ -1721,6 +1818,53 @@
       </section>
     </div>
 
+    <div id="noInspirationModal" class="modal-backdrop" role="dialog" aria-modal="true" aria-labelledby="noInspirationTitle">
+      <section class="inspiration-modal">
+        <div class="share-header">
+          <div>
+            <h2 id="noInspirationTitle">无灵感做歌</h2>
+            <p>回答 3 个选择题，我会帮你生成可直接做歌的描述。</p>
+          </div>
+          <button id="noInspirationCloseButton" class="share-close" title="关闭">
+            <svg class="icon" viewBox="0 0 24 24"><path d="M18 6 6 18M6 6l12 12" /></svg>
+          </button>
+        </div>
+        <div class="inspiration-body">
+          <div id="noInspirationSteps"></div>
+          <div class="inspiration-footer">
+            <span id="noInspirationProgress" class="inspiration-progress">1 / 3</span>
+            <div class="inspiration-actions">
+              <button id="noInspirationBackButton" class="secondary" type="button">上一步</button>
+              <button id="noInspirationNextButton" class="primary" type="button">下一步</button>
+            </div>
+          </div>
+          <div id="noInspirationMessage" class="generation-message" role="status" aria-live="polite"></div>
+        </div>
+      </section>
+    </div>
+
+    <div id="adjustModal" class="modal-backdrop" role="dialog" aria-modal="true" aria-labelledby="adjustModalTitle">
+      <section class="share-modal">
+        <div class="share-header">
+          <div>
+            <h2 id="adjustModalTitle">调整当前版本</h2>
+            <p>输入你想调整的细节，会作为新的文本提示词生成一个新版本。</p>
+          </div>
+          <button id="adjustCloseButton" class="share-close" title="关闭">
+            <svg class="icon" viewBox="0 0 24 24"><path d="M18 6 6 18M6 6l12 12" /></svg>
+          </button>
+        </div>
+        <div class="share-body">
+          <div class="share-config">
+            <label class="wide">调整提示词
+              <textarea id="adjustPrompt" maxlength="500" placeholder="例如：主歌更克制一点，副歌旋律更抓耳，鼓点轻一些，人声更温柔"></textarea>
+            </label>
+            <button id="adjustSubmitButton" class="primary wide" type="button">生成调整版本 <svg class="icon" viewBox="0 0 24 24"><path d="M13 2 9 10l-7 3 7 3 4 8 4-8 7-3-7-3z" /></svg></button>
+          </div>
+        </div>
+      </section>
+    </div>
+
     <script>
       const STORAGE_KEY = "melodyflow.creations.v1";
       const textarea = document.querySelector("textarea");
@@ -1734,6 +1878,11 @@
       const versionsPanel = document.getElementById("versionsPanel");
       const versionList = document.getElementById("versionList");
       const allVersionsLink = document.getElementById("allVersionsLink");
+      const adjustVersionButton = document.getElementById("adjustVersionButton");
+      const adjustModal = document.getElementById("adjustModal");
+      const adjustCloseButton = document.getElementById("adjustCloseButton");
+      const adjustPrompt = document.getElementById("adjustPrompt");
+      const adjustSubmitButton = document.getElementById("adjustSubmitButton");
       const audioPlayer = document.getElementById("audioPlayer");
       const currentTimeLabel = document.getElementById("currentTimeLabel");
       const durationLabelEl = document.getElementById("durationLabel");
@@ -1773,6 +1922,14 @@
       const imageCaptionTitle = document.getElementById("imageCaptionTitle");
       const imageCaptionText = document.getElementById("imageCaptionText");
       const imageCaptionJson = document.getElementById("imageCaptionJson");
+      const noInspirationButton = document.getElementById("noInspirationButton");
+      const noInspirationModal = document.getElementById("noInspirationModal");
+      const noInspirationCloseButton = document.getElementById("noInspirationCloseButton");
+      const noInspirationSteps = document.getElementById("noInspirationSteps");
+      const noInspirationProgress = document.getElementById("noInspirationProgress");
+      const noInspirationBackButton = document.getElementById("noInspirationBackButton");
+      const noInspirationNextButton = document.getElementById("noInspirationNextButton");
+      const noInspirationMessage = document.getElementById("noInspirationMessage");
       const speechRecordButton = document.getElementById("speechRecordButton");
       const speechPanel = document.getElementById("speechPanel");
       const speechTitle = document.getElementById("speechTitle");
@@ -1805,6 +1962,8 @@
       let isSeeking = false;
       let imageCaption = null;
       let imageDataUrl = "";
+      let noInspirationStep = 0;
+      const noInspirationAnswers = {};
       let speechRecorder = null;
       let speechChunks = [];
       let speechAudioBlob = null;
@@ -1812,6 +1971,50 @@
       let speechDurationSeconds = 0;
       let speechStartedAt = 0;
       let speechTranscript = "";
+      const noInspirationQuestions = [
+        {
+          key: "environment",
+          title: "窗外的世界现在是什么感觉？",
+          hint: "环境与氛围会决定歌曲的色彩、空间感和基础基调。",
+          options: [
+            { id: "A", text: "阳光刺眼，空气里都是躁动的热气", mapping: "High BPM, Bright, Pop/Funk" },
+            { id: "B", text: "暴雨倾盆，世界被困在玻璃窗后", mapping: "Lo-Fi, Ambient, Melancholic" },
+            { id: "C", text: "晚霞漫天，街灯刚刚一盏盏亮起", mapping: "City Pop, Synthwave, Chill" },
+            { id: "D", text: "夜深人静，只剩下房间里的电脑荧幕", mapping: "Deep House, Minimal, Dark Ambient" },
+            { id: "E", text: "起雾的早晨，空气湿漉漉的变冷了", mapping: "Acoustic Folk, Dreampop" },
+            { id: "F", text: "微风吹过，树影在墙上晃来晃去", mapping: "Indie Pop, Breezy, Bossa Nova" },
+            { id: "G", text: "雷光闪烁，感觉空气里绷着一股劲", mapping: "Rock, Industrial, Dramatic" }
+          ]
+        },
+        {
+          key: "currentState",
+          title: "你此刻正在干什么？或者处于什么状态？",
+          hint: "状态会决定歌曲的节奏感、动态和情绪表达浓度。",
+          options: [
+            { id: "A", text: "发呆扯淡，手里的咖啡/茶放凉了", mapping: "Mid-tempo, Chillhop, Relaxed" },
+            { id: "B", text: "疯狂敲键盘，脑子快要打结/爆掉", mapping: "Fast BPM, Uptempo, Cyberpunk/Electronic" },
+            { id: "C", text: "在路上兜风，或者盯着公交/地铁窗外", mapping: "Groovy, Driving Bassline, Synthpop" },
+            { id: "D", text: "瘫在沙发/床上，一动也不想动", mapping: "Slow BPM, Downtempo, Atmospheric" },
+            { id: "E", text: "微醺发疯，想跳舞或者大喊大叫", mapping: "Dance, Disco, High Energy, Guitar Solo" },
+            { id: "F", text: "心烦意乱，陷在某段情绪里出不来", mapping: "Emo, Acoustic Piano, Ballad" },
+            { id: "G", text: "一个人漫无目的地散步/踩马路", mapping: "Lo-Fi Beat, Casual Rhythm, Hip-Hop" }
+          ]
+        },
+        {
+          key: "musicRemedy",
+          title: "你想让这首歌带给你什么解药？",
+          hint: "解药会直接决定主要乐器和音乐风格方向。",
+          options: [
+            { id: "A", text: "一段极度舒适、能让人陷进去的复古旋律", mapping: "Retro Synth, Keys, Soul" },
+            { id: "B", text: "抓耳又爽快的电吉他/贝斯 Line，极具节奏感", mapping: "Funk, Rock, R&B" },
+            { id: "C", text: "简单又沉重的鼓点，踩在心跳上的感觉", mapping: "Boom Bap, Trap, Bass-heavy" },
+            { id: "D", text: "宏大、深邃、像电影原声一样的包围感", mapping: "Cinematic, Orchestral, Post-Rock" },
+            { id: "E", text: "飘渺虚无的声场，把脑袋完全放空", mapping: "Ambient, Shoegaze, Drone" },
+            { id: "F", text: "抓人的 Voice Sampling 或温暖人声", mapping: "Vocal Chops, Acoustic Guitar" },
+            { id: "G", text: "让人忍不住跟着摇摆的律动感", mapping: "House, Nu-Disco, Afrobeats" }
+          ]
+        }
+      ];
 
       textarea.addEventListener("input", () => {
         counter.textContent = `${textarea.value.length}/${textarea.maxLength}`;
@@ -1821,6 +2024,19 @@
         const button = event.target.closest("button[data-text-mode]");
         if (!button) return;
         setTextGenerationMode(button.dataset.textMode);
+      });
+
+      noInspirationButton.addEventListener("click", openNoInspirationModal);
+      noInspirationCloseButton.addEventListener("click", closeNoInspirationModal);
+      noInspirationBackButton.addEventListener("click", () => {
+        if (noInspirationStep > 0) {
+          noInspirationStep -= 1;
+          renderNoInspirationSteps();
+        }
+      });
+      noInspirationNextButton.addEventListener("click", handleNoInspirationNext);
+      noInspirationModal.addEventListener("click", (event) => {
+        if (event.target === noInspirationModal) closeNoInspirationModal();
       });
 
       document.querySelectorAll(".chip").forEach((chip) => {
@@ -2051,6 +2267,118 @@
         document.getElementById("songTitle").placeholder = textGenerationMode === "description" ? "歌曲标题（描述模式可留空）" : "歌曲标题（歌词模式必填）";
       }
 
+      function openNoInspirationModal() {
+        noInspirationStep = 0;
+        Object.keys(noInspirationAnswers).forEach((key) => delete noInspirationAnswers[key]);
+        noInspirationModal.classList.add("show");
+        showNoInspirationMessage("");
+        renderNoInspirationSteps();
+      }
+
+      function closeNoInspirationModal() {
+        noInspirationModal.classList.remove("show");
+      }
+
+      function renderNoInspirationSteps() {
+        noInspirationSteps.innerHTML = noInspirationQuestions.map((question, index) => `
+          <section class="inspiration-step ${index === noInspirationStep ? "active" : ""}" data-step="${index}">
+            <div>
+              <h3>${index + 1}. ${escapeHtml(question.title)}</h3>
+              <p>${escapeHtml(question.hint)}</p>
+            </div>
+            <div class="inspiration-options">
+              ${question.options.map((option) => {
+                const selected = noInspirationAnswers[question.key]?.id === option.id;
+                return `<button class="inspiration-option ${selected ? "selected" : ""}" type="button" data-question="${question.key}" data-option="${option.id}">
+                  <strong>${option.id}. ${escapeHtml(option.text)}</strong>
+                  <span>${escapeHtml(option.mapping)}</span>
+                </button>`;
+              }).join("")}
+            </div>
+          </section>
+        `).join("");
+        noInspirationSteps.querySelectorAll(".inspiration-option").forEach((button) => {
+          button.addEventListener("click", () => {
+            const question = noInspirationQuestions.find((item) => item.key === button.dataset.question);
+            const option = question?.options.find((item) => item.id === button.dataset.option);
+            if (!question || !option) return;
+            noInspirationAnswers[question.key] = option;
+            renderNoInspirationSteps();
+          });
+        });
+        noInspirationProgress.textContent = `${noInspirationStep + 1} / ${noInspirationQuestions.length}`;
+        noInspirationBackButton.disabled = noInspirationStep === 0;
+        noInspirationNextButton.textContent = noInspirationStep === noInspirationQuestions.length - 1 ? "生成做歌描述" : "下一步";
+      }
+
+      function showNoInspirationMessage(message, isError = false) {
+        noInspirationMessage.textContent = message || "";
+        noInspirationMessage.classList.toggle("show", Boolean(message));
+        noInspirationMessage.classList.toggle("error", Boolean(isError));
+      }
+
+      async function handleNoInspirationNext() {
+        const question = noInspirationQuestions[noInspirationStep];
+        if (!noInspirationAnswers[question.key]) {
+          showNoInspirationMessage("请先选择一个选项。", true);
+          return;
+        }
+        showNoInspirationMessage("");
+        if (noInspirationStep < noInspirationQuestions.length - 1) {
+          noInspirationStep += 1;
+          renderNoInspirationSteps();
+          return;
+        }
+        await generateNoInspirationPrompt();
+      }
+
+      async function generateNoInspirationPrompt() {
+        noInspirationNextButton.disabled = true;
+        noInspirationBackButton.disabled = true;
+        showNoInspirationMessage("正在生成做歌描述...");
+        try {
+          const result = await requestJson("/api/no-inspiration-prompt", {
+            method: "POST",
+            headers: { "Content-Type": "application/json" },
+            body: JSON.stringify({
+              environment: noInspirationAnswers.environment,
+              currentState: noInspirationAnswers.currentState,
+              musicRemedy: noInspirationAnswers.musicRemedy
+            })
+          });
+          const prompt = result.prompt || {};
+          if (!prompt.music_prompt) throw new Error("Prompt 生成结果为空");
+          setTextGenerationMode("description");
+          textarea.value = prompt.music_prompt.slice(0, textarea.maxLength);
+          counter.textContent = `${textarea.value.length}/${textarea.maxLength}`;
+          document.getElementById("songTitle").value = prompt.theme || "无灵感 Demo";
+          applyGeneratedStyles(prompt.music_style || []);
+          closeNoInspirationModal();
+          showMessage("无灵感做歌描述已生成，可以直接点击“生成 Demo”。");
+        } catch (error) {
+          showNoInspirationMessage(error.message, true);
+        } finally {
+          noInspirationNextButton.disabled = false;
+          noInspirationBackButton.disabled = noInspirationStep === 0;
+        }
+      }
+
+      function applyGeneratedStyles(styles) {
+        const styleText = styles.join(" ").toLowerCase();
+        const chips = [...document.querySelectorAll(".chip")];
+        chips.forEach((chip) => chip.classList.remove("selected"));
+        const matched = chips.filter((chip) => {
+          const label = chip.textContent.toLowerCase();
+          return (styleText.includes("pop") && label.includes("pop"))
+            || (styleText.includes("folk") && label.includes("folk"))
+            || (styleText.includes("rock") && label.includes("rock"))
+            || (styleText.includes("hip") && label.includes("hip"))
+            || (styleText.includes("electronic") && label.includes("electronic"))
+            || (styleText.includes("r&b") && label.includes("r&b"));
+        });
+        (matched.length ? matched : chips.slice(0, 1)).forEach((chip) => chip.classList.add("selected"));
+      }
+
       function isHumMode() {
         return humRecordButton.classList.contains("selected");
       }
@@ -2246,7 +2574,7 @@
             hummedAudioUrl = URL.createObjectURL(hummedAudioBlob);
             recordPreview.src = hummedAudioUrl;
             recordTitle.textContent = "哼唱录音已缓存";
-            recordStatus.textContent = `已录制 ${hummedDurationSeconds} 秒 / ${(hummedAudioBlob.size / 1024).toFixed(1)} KB，点击“生成 Demo”会基于这段旋律生成乐器版本。`;
+            recordStatus.textContent = `已录制 ${hummedDurationSeconds} 秒 / ${(hummedAudioBlob.size / 1024).toFixed(1)} KB，点击“生成 Demo”会基于这段旋律上传并翻唱生成新版本。`;
             humRecordButton.classList.remove("recording");
             humRecordButton.querySelector("span").textContent = "重新录音";
             showMessage(hummedDurationSeconds < MIN_HUM_SECONDS ? `录音只有 ${hummedDurationSeconds} 秒，建议重新录制至少 ${MIN_HUM_SECONDS} 秒。` : "录音已缓存，点击生成 Demo 开始生成旋律。", hummedDurationSeconds < MIN_HUM_SECONDS);
@@ -2329,6 +2657,68 @@
 
       function closeShareModal() {
         shareModal.classList.remove("show");
+      }
+
+      function openAdjustModal() {
+        const creation = currentCreation();
+        const version = currentVersion();
+        if (!creation || !version?.id) {
+          showMessage("请先选择一个已生成版本。", true);
+          return;
+        }
+        adjustPrompt.value = "";
+        adjustModal.classList.add("show");
+        adjustPrompt.focus();
+      }
+
+      function closeAdjustModal() {
+        adjustModal.classList.remove("show");
+      }
+
+      async function generateAdjustedVersion() {
+        const creation = currentCreation();
+        const version = currentVersion();
+        const instruction = adjustPrompt.value.trim();
+        if (!creation || !version?.id) return showMessage("请先选择一个已生成版本。", true);
+        if (!instruction) return showMessage("请先输入调整提示词。", true);
+
+        const basePrompt = version.prompt || creation.prompt || "";
+        const style = version.tags || creation.style || selectedStyle();
+        const title = version.title || creation.title || "调整版本";
+        const prompt = `基于当前已生成歌曲《${title}》做一个调整版本。原始创作方向：${basePrompt || "保持原有主题和情绪"}。本次调整要求：${instruction}。请保留歌曲核心记忆点，同时按要求调整编曲、情绪、节奏或人声表现，生成一首完整的新版本。`.slice(0, 500);
+
+        clearInterval(pollingTimer);
+        pendingMode = "append";
+        setTextGenerationMode("description");
+        textarea.value = prompt;
+        counter.textContent = `${textarea.value.length}/${textarea.maxLength}`;
+        document.getElementById("songTitle").value = title;
+        setGenerating(true);
+        statusEl.textContent = "提交中";
+        closeAdjustModal();
+        showMessage("正在提交调整版本，等待回调或轮询结果...");
+        try {
+          const result = await requestJson("/api/suno/generate", {
+            method: "POST",
+            headers: { "Content-Type": "application/json" },
+            body: JSON.stringify({
+              prompt,
+              generationType: "description",
+              model: "V5",
+              callbackUrl: document.getElementById("callbackUrl").value.trim()
+            })
+          });
+          const taskId = result.taskId;
+          if (!taskId) throw new Error("接口未返回 taskId");
+          statusEl.textContent = "生成中";
+          showMessage(`调整任务已创建：${taskId}。页面会通过回调/轮询获取新版本。`);
+          await pollTask(taskId);
+          pollingTimer = setInterval(() => pollTask(taskId), 5000);
+        } catch (error) {
+          setGenerating(false);
+          statusEl.textContent = "失败";
+          showMessage(error.message, true);
+        }
       }
 
       async function createShareCandidates() {
@@ -2481,7 +2871,7 @@
             callbackUrl: document.getElementById("callbackUrl").value.trim(),
             ...(textGenerationMode === "lyrics" ? { title, style: selectedStyle() } : {})
           };
-          const result = await requestJson(humMode ? "/api/suno/add-instrumental" : "/api/suno/generate", {
+          const result = await requestJson(humMode ? "/api/suno/upload-cover" : "/api/suno/generate", {
             method: "POST",
             headers: { "Content-Type": "application/json" },
             body: JSON.stringify(requestBody)
@@ -2507,10 +2897,13 @@
           statusEl.textContent = labels[status] || "生成失败";
           showMessage(friendlyTaskMessage(status, result.errorMessage), status.includes("FAILED") || status.includes("ERROR"));
 
-          if (status === "SUCCESS") {
+          if ((status === "FIRST_SUCCESS" || status === "SUCCESS") && (result.tracks || []).length) {
             clearInterval(pollingTimer);
             setGenerating(false);
             saveGeneratedTracks(result.tracks || [], taskId);
+            if (status === "FIRST_SUCCESS") {
+              pollingTimer = setInterval(() => pollTask(taskId), 5000);
+            }
           } else if (["CREATE_TASK_FAILED", "GENERATE_AUDIO_FAILED", "CALLBACK_EXCEPTION", "SENSITIVE_WORD_ERROR"].includes(status)) {
             clearInterval(pollingTimer);
             setGenerating(false);
@@ -2552,7 +2945,13 @@
         creation.generationType = textGenerationMode;
         creation.updatedAt = new Date().toISOString();
 
-        usableTracks.forEach((track) => {
+        const newTracks = usableTracks.filter((track) => !creation.versions.some((version) => version.id === track.id));
+        if (!newTracks.length) {
+          renderAll();
+          return;
+        }
+
+        newTracks.forEach((track) => {
           const versionNumber = creation.versions.length + 1;
           creation.versions.push({
             id: track.id || uid("version"),
@@ -2826,6 +3225,12 @@
       newCreationNav.addEventListener("click", startBlankCreation);
       myCreationsNav.addEventListener("click", () => switchView("history"));
       createFromHistoryButton.addEventListener("click", startBlankCreation);
+      adjustVersionButton.addEventListener("click", openAdjustModal);
+      adjustCloseButton.addEventListener("click", closeAdjustModal);
+      adjustSubmitButton.addEventListener("click", generateAdjustedVersion);
+      adjustModal.addEventListener("click", (event) => {
+        if (event.target === adjustModal) closeAdjustModal();
+      });
       newVersionButton.addEventListener("click", () => generateMusic({ appendToCurrent: true }));
       allVersionsLink.addEventListener("click", (event) => {
         event.preventDefault();

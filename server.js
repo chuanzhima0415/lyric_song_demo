@@ -64,6 +64,44 @@ const IMAGE_CAPTION_PROMPT = `你是一名音乐创作策划。请理解用户�
 - 不指定精确 BPM；
 - 不模仿具体音乐人；
 - 语言简洁、自然，可直接用于生成音乐。`;
+const NO_INSPIRATION_PROMPT = `# 无灵感做歌 Prompt 生成
+
+你是一名音乐创作策划。请根据用户对以下三个问题的选择，生成一段可直接输入音乐生成模型的做歌提示词：
+
+1. 窗外的环境与氛围；
+2. 用户当前的行为或状态；
+3. 用户希望音乐带来的“解药”。
+
+## 生成要求
+
+- 综合三个选项，不要机械拼接选项原文。
+- 将环境转化为歌曲的画面、情绪和空间感。
+- 将当前状态转化为速度、律动和情绪浓度。
+- 将“解药”转化为音乐风格、主要配器和听感方向。
+- 当选项之间存在冲突时，以第三个问题确定核心风格，前两个问题作为氛围和节奏补充。
+- 不指定具体歌手、乐队或歌曲。
+- 不输出精确 BPM、调式或和弦。
+- 语言自然、简洁、有画面感。
+
+## 输出格式
+
+严格输出合法 JSON，不要输出额外解释。
+
+{
+  "theme": "歌曲主题，20字以内",
+  "mood": ["情绪1", "情绪2", "情绪3"],
+  "music_style": ["主要风格", "辅助风格"],
+  "instrumentation": ["配器1", "配器2", "配器3"],
+  "music_prompt": "可直接输入音乐生成模型的中文提示词"
+}
+
+## music_prompt 要求
+
+- 控制在 80～150 个汉字；
+- 包含场景、情绪、速度感、风格、主要配器和段落发展；
+- 主歌与副歌要有清晰的情绪变化；
+- 不解释生成过程；
+- 不重复罗列用户选择。`;
 const SONG_ANALYSIS_PROMPT = `# 歌曲解读与推荐语生成
 
 你是一名专业的音乐编辑。请结合输入的歌曲音频和完整歌词，对歌曲进行简洁、准确的结构化解读。
@@ -166,6 +204,53 @@ function formatSeconds(seconds) {
   return `${Math.floor(value / 60)}:${String(value % 60).padStart(2, "0")}`;
 }
 
+function normalizeSunoTrack(track = {}) {
+  return {
+    id: track.id,
+    audioUrl: track.audioUrl || track.audio_url,
+    streamAudioUrl: track.streamAudioUrl || track.stream_audio_url,
+    imageUrl: track.imageUrl || track.image_url,
+    sourceAudioUrl: track.sourceAudioUrl || track.source_audio_url,
+    sourceStreamAudioUrl: track.sourceStreamAudioUrl || track.source_stream_audio_url,
+    sourceImageUrl: track.sourceImageUrl || track.source_image_url,
+    prompt: track.prompt,
+    title: track.title,
+    tags: track.tags,
+    modelName: track.modelName || track.model_name,
+    createTime: track.createTime || track.create_time || track.createTime,
+    duration: track.duration
+  };
+}
+
+function tracksFromCallback(payload) {
+  const callbackData = payload?.data || {};
+  if (!["first", "complete"].includes(callbackData.callbackType)) return [];
+  return (callbackData.data || []).map(normalizeSunoTrack).filter((track) => track.audioUrl || track.streamAudioUrl);
+}
+
+function statusFromCallback(payload) {
+  const callbackData = payload?.data || {};
+  if (!payload) return "";
+  if (payload.code && Number(payload.code) !== 200) return "GENERATE_AUDIO_FAILED";
+  if (callbackData.callbackType === "error") return "GENERATE_AUDIO_FAILED";
+  if (callbackData.callbackType === "complete") return "SUCCESS";
+  if (callbackData.callbackType === "first") return "FIRST_SUCCESS";
+  if (callbackData.callbackType === "text") return "TEXT_SUCCESS";
+  return "";
+}
+
+function callbackTaskId(payload = {}) {
+  return payload.data?.task_id || payload.data?.taskId || payload.task_id || payload.taskId || "";
+}
+
+function mergeTaskStatus(recordStatus = "", callbackStatus = "") {
+  const terminal = new Set(["SUCCESS", "CREATE_TASK_FAILED", "GENERATE_AUDIO_FAILED", "CALLBACK_EXCEPTION", "SENSITIVE_WORD_ERROR"]);
+  if (callbackStatus && (terminal.has(callbackStatus) || !recordStatus || recordStatus === "PENDING")) return callbackStatus;
+  if (recordStatus === "TEXT_SUCCESS" && callbackStatus === "FIRST_SUCCESS") return callbackStatus;
+  if (recordStatus === "FIRST_SUCCESS" && callbackStatus === "SUCCESS") return callbackStatus;
+  return recordStatus || callbackStatus || "PENDING";
+}
+
 function shuffledShareImages(count, baseUrl) {
   let files = [];
   try {
@@ -197,13 +282,6 @@ function makeSharePage(share, shareUrl) {
   const moodText = analysis.mood.join(" · ") || "真诚 · 温暖";
   const recommendation = escapeHtml(analysis.recommendation || "灵感正在发光");
   const songDescription = escapeHtml(`${analysis.content_summary}。${analysis.arrangement_summary}`);
-  const comments = (share.comments || []).map((comment) => `
-    <article class="comment-item">
-      <div><strong>${"★".repeat(Number(comment.rating) || 0)}${"☆".repeat(5 - (Number(comment.rating) || 0))}</strong><span>${escapeHtml(formatSeconds(comment.timeSeconds))}</span></div>
-      <p>${escapeHtml(comment.text)}</p>
-    </article>
-  `).join("");
-
   return `<!doctype html>
 <html lang="zh-CN">
   <head>
@@ -271,6 +349,7 @@ function makeSharePage(share, shareUrl) {
       .qr { display: grid; width: 86px; height: 86px; place-items: center; color: rgba(255,255,255,.72); border: 1px dashed rgba(255,255,255,.42); border-radius: 12px; font-size: 12px; text-align: center; }
       .copy { width: 100%; min-height: 48px; margin: 18px 0 0; color: #fff; background: #7048ff; border: 0; border-radius: 12px; font-size: 16px; font-weight: 760; }
       .feedback-entry { margin: 18px 0 0; }
+      a.feedback-entry { display: flex; align-items: center; justify-content: center; min-height: 48px; color: #7048ff; background: #fff; border: 1px solid #ded7ff; border-radius: 12px; cursor: pointer; font-weight: 820; text-decoration: none; }
       .feedback-entry summary { display: flex; align-items: center; justify-content: center; min-height: 48px; color: #7048ff; background: #fff; border: 1px solid #ded7ff; border-radius: 12px; cursor: pointer; font-weight: 820; }
       .feedback { margin-top: 22px; padding: 18px; background: #fbfaff; border: 1px solid #e2dcff; border-radius: 18px; }
       .feedback h2 { margin: 0 0 12px; font-size: 20px; }
@@ -331,31 +410,7 @@ function makeSharePage(share, shareUrl) {
           </div>
           <h2 class="section-title">歌曲描述</h2>
           <div class="description-box">${songDescription}</div>
-          <details class="feedback-entry">
-            <summary>反馈修改意见</summary>
-            <section class="feedback" aria-label="歌曲反馈">
-              <h2>标记反馈</h2>
-              <div class="feedback-meta">
-                <span>评论时间点</span>
-                <strong id="feedbackTime" class="feedback-time">0:00</strong>
-              </div>
-              <input id="feedbackRange" class="feedback-range" type="range" min="0" max="1000" value="0" aria-label="选择评论时间点" />
-              <div id="stars" class="stars" aria-label="打星">
-                <button type="button" data-rating="1">★</button>
-                <button type="button" data-rating="2">★</button>
-                <button type="button" data-rating="3">★</button>
-                <button type="button" data-rating="4">★</button>
-                <button type="button" data-rating="5">★</button>
-              </div>
-              <textarea id="feedbackText" maxlength="500" placeholder="写下这一段的修改建议、喜欢/不喜欢的地方..."></textarea>
-              <div class="feedback-actions">
-                <button id="markCurrentTime" type="button">标记当前进度</button>
-                <button id="submitFeedback" class="submit" type="button">提交反馈</button>
-              </div>
-              <p id="feedbackMessage" class="feedback-message"></p>
-              <div id="commentList" class="comment-list">${comments || ""}</div>
-            </section>
-          </details>
+          <a class="feedback-entry" href="${escapeHtml(shareUrl)}/feedback">反馈修改意见</a>
           <button class="copy" data-link="${escapeHtml(shareUrl)}">复制链接</button>
         </div>
         <footer class="footer">
@@ -368,44 +423,14 @@ function makeSharePage(share, shareUrl) {
     <script>
       const token = ${JSON.stringify(share.token)};
       const audio = document.getElementById("shareAudio");
-      const range = document.getElementById("feedbackRange");
-      const timeLabel = document.getElementById("feedbackTime");
       const durationLabel = document.getElementById("durationLabel");
       const playButton = document.getElementById("playButton");
-      const message = document.getElementById("feedbackMessage");
-      const commentList = document.getElementById("commentList");
-      let rating = 0;
 
       function formatTime(seconds) {
         const value = Math.max(0, Math.floor(Number(seconds) || 0));
         return Math.floor(value / 60) + ":" + String(value % 60).padStart(2, "0");
       }
 
-      function selectedTime() {
-        const duration = audio && Number.isFinite(audio.duration) ? audio.duration : 0;
-        return duration ? duration * (Number(range.value) / 1000) : 0;
-      }
-
-      function updateTimeFromAudio() {
-        if (!audio || !range || !Number.isFinite(audio.duration) || !audio.duration) return;
-        range.value = String(Math.round((audio.currentTime / audio.duration) * 1000));
-        timeLabel.textContent = formatTime(audio.currentTime);
-      }
-
-      function updateTimeFromRange() {
-        const time = selectedTime();
-        timeLabel.textContent = formatTime(time);
-      }
-
-      function renderComment(comment) {
-        const item = document.createElement("article");
-        item.className = "comment-item";
-        item.innerHTML = '<div><strong>' + "★".repeat(comment.rating) + "☆".repeat(5 - comment.rating) + '</strong><span>' + formatTime(comment.timeSeconds) + '</span></div><p></p>';
-        item.querySelector("p").textContent = comment.text;
-        commentList.prepend(item);
-      }
-
-      audio?.addEventListener("timeupdate", updateTimeFromAudio);
       audio?.addEventListener("loadedmetadata", () => {
         durationLabel.textContent = formatTime(audio.duration);
       });
@@ -420,52 +445,6 @@ function makeSharePage(share, shareUrl) {
         if (audio.paused) audio.play();
         else audio.pause();
       });
-      range?.addEventListener("input", updateTimeFromRange);
-      range?.addEventListener("change", () => {
-        if (!audio || !Number.isFinite(audio.duration) || !audio.duration) return;
-        audio.currentTime = selectedTime();
-      });
-
-      document.getElementById("markCurrentTime").addEventListener("click", () => {
-        updateTimeFromAudio();
-        message.textContent = "已标记 " + timeLabel.textContent;
-      });
-
-      document.getElementById("stars").addEventListener("click", (event) => {
-        const button = event.target.closest("button[data-rating]");
-        if (!button) return;
-        rating = Number(button.dataset.rating);
-        document.querySelectorAll("#stars button").forEach((item) => item.classList.toggle("active", Number(item.dataset.rating) <= rating));
-      });
-
-      document.getElementById("submitFeedback").addEventListener("click", async () => {
-        const text = document.getElementById("feedbackText").value.trim();
-        if (!rating) {
-          message.textContent = "请先打星";
-          return;
-        }
-        if (!text) {
-          message.textContent = "请填写文字反馈";
-          return;
-        }
-        const payload = { rating, text, timeSeconds: Math.round(selectedTime()) };
-        message.textContent = "正在提交反馈...";
-        try {
-          const response = await fetch("/api/shares/" + encodeURIComponent(token) + "/comments", {
-            method: "POST",
-            headers: { "Content-Type": "application/json" },
-            body: JSON.stringify(payload)
-          });
-          const body = await response.json().catch(() => ({}));
-          if (!response.ok) throw new Error(body.message || "反馈提交失败");
-          renderComment(body.comment);
-          document.getElementById("feedbackText").value = "";
-          message.textContent = "反馈已保存";
-        } catch (error) {
-          message.textContent = error.message;
-        }
-      });
-
       document.querySelector(".copy").addEventListener("click", async (event) => {
         const link = event.currentTarget.dataset.link;
         try {
@@ -475,6 +454,344 @@ function makeSharePage(share, shareUrl) {
           event.currentTarget.textContent = link;
         }
       });
+    </script>
+  </body>
+</html>`;
+}
+
+function makeFeedbackPage(share, shareUrl) {
+  const title = escapeHtml(share.title || "未命名 Demo");
+  const creatorName = escapeHtml(share.creatorName || "Echo");
+  const creatorRole = escapeHtml(share.creatorRole || "独立音乐人");
+  const createdAt = escapeHtml((share.createdAt || "").slice(0, 10));
+  const audioUrl = escapeHtml(share.audioUrl || "");
+  const heroImageUrl = escapeHtml(share.heroImageUrl || "");
+  const versionLabel = escapeHtml(share.versionLabel || "v1");
+  const comments = JSON.stringify((share.comments || []).map((comment) => ({
+    id: comment.id,
+    timeSeconds: Math.max(0, Math.round(Number(comment.timeSeconds) || 0)),
+    rating: Math.max(1, Math.min(5, Math.round(Number(comment.rating) || 5))),
+    title: comment.title || "修改建议",
+    category: comment.category || "建议",
+    text: comment.text || "",
+    createdAt: comment.createdAt
+  })).sort((a, b) => a.timeSeconds - b.timeSeconds));
+  const bars = Array.from({ length: 96 }, (_, index) => {
+    const height = 22 + Math.round(Math.abs(Math.sin(index * 0.55)) * 54 + Math.abs(Math.cos(index * 0.17)) * 20);
+    return `<span style="height:${height}px"></span>`;
+  }).join("");
+
+  return `<!doctype html>
+<html lang="zh-CN">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>反馈修改意见 - ${title}</title>
+    <style>
+      * { box-sizing: border-box; }
+      body { margin: 0; min-height: 100vh; color: #25283b; background: linear-gradient(180deg, #faf8ff, #f0ecff); font-family: ui-sans-serif, system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI", "PingFang SC", "Microsoft YaHei", sans-serif; }
+      button, input, textarea, select { font: inherit; }
+      .page { max-width: 760px; margin: 0 auto; padding: 12px 12px 24px; }
+      .hero-card, .timeline-card, .mini-player { background: rgba(255,255,255,.9); border: 1px solid #e4dcff; border-radius: 18px; box-shadow: 0 18px 48px rgba(60, 39, 132, .09); }
+      .hero-card { display: grid; grid-template-columns: auto 1fr auto; gap: 18px; align-items: center; padding: 24px; }
+      .back { display: grid; width: 44px; height: 44px; place-items: center; color: #242638; text-decoration: none; border-radius: 12px; }
+      .cover { width: 118px; aspect-ratio: 1; border-radius: 14px; object-fit: cover; background: linear-gradient(135deg, #eee9ff, #d8e8ff); }
+      .song h1 { margin: 0 0 10px; font-size: 30px; line-height: 1.1; letter-spacing: 0; }
+      .song-meta, .song-sub { color: #62677a; line-height: 1.7; }
+      .version { display: inline-flex; margin-left: 8px; padding: 4px 8px; color: #7048ff; background: #f1ebff; border-radius: 8px; font-size: 15px; }
+      .top-actions { display: grid; gap: 16px; justify-items: end; }
+      .submit-top { min-height: 42px; padding: 0 18px; color: #7048ff; background: #fff; border: 1px solid #a98bff; border-radius: 10px; cursor: pointer; font-weight: 800; }
+      .switch { display: grid; width: 58px; height: 58px; place-items: center; color: #242638; background: #f2f0f8; border: 0; border-radius: 50%; cursor: pointer; }
+      .switch svg, .play svg, .icon { width: 24px; height: 24px; stroke: currentColor; fill: none; stroke-width: 2; stroke-linecap: round; stroke-linejoin: round; }
+      .timeline-card { margin-top: 20px; overflow: hidden; }
+      .player-row { display: grid; grid-template-columns: auto auto 1fr auto auto auto; gap: 16px; align-items: center; padding: 22px; }
+      .play { display: grid; width: 58px; height: 58px; place-items: center; color: #fff; background: linear-gradient(135deg, #9a5bff, #6846f5); border: 0; border-radius: 50%; cursor: pointer; box-shadow: 0 14px 30px rgba(104, 70, 245, .28); }
+      .clock { color: #7048ff; font-size: 18px; font-weight: 900; }
+      .duration { color: #7b8095; }
+      .skip, .volume-button { display: grid; width: 42px; height: 42px; place-items: center; color: #25283b; background: #fff; border: 0; border-radius: 10px; cursor: pointer; }
+      .volume { width: 128px; accent-color: #7048ff; }
+      .wave-panel { position: relative; padding: 26px 22px 34px; cursor: pointer; }
+      .wave { display: flex; height: 92px; align-items: center; gap: 3px; }
+      .wave span { flex: 1; min-width: 2px; border-radius: 999px; background: #d7c9ff; }
+      .wave span.active { background: #7048ff; }
+      .playhead { position: absolute; top: 22px; bottom: 50px; left: 22px; width: 3px; background: #7048ff; border-radius: 999px; transform: translateX(-1px); pointer-events: none; }
+      .playhead::before { content: attr(data-time); position: absolute; top: -26px; left: 50%; transform: translateX(-50%); padding: 5px 9px; color: #fff; background: #7048ff; border-radius: 8px; font-weight: 800; white-space: nowrap; }
+      .ticks { display: grid; grid-template-columns: repeat(6, 1fr); margin-top: 12px; color: #747a91; font-size: 14px; }
+      .ticks span:last-child { text-align: right; }
+      .hint-row { display: flex; align-items: center; justify-content: space-between; gap: 12px; padding: 14px 22px; color: #777d92; border-top: 1px solid #ece7ff; border-bottom: 1px solid #ece7ff; }
+      .hint-row button { min-height: 38px; padding: 0 14px; color: #7048ff; background: #fff; border: 1px solid #d6c8ff; border-radius: 10px; cursor: pointer; font-weight: 800; }
+      .feedback-form { display: none; grid-template-columns: 120px 1fr; gap: 12px; padding: 18px 22px; background: #fbfaff; border-bottom: 1px solid #ece7ff; }
+      .feedback-form.show { display: grid; }
+      .feedback-form .time-box { color: #25283b; font-size: 22px; font-weight: 900; }
+      .fields { display: grid; gap: 10px; }
+      .fields input, .fields textarea, .fields select { width: 100%; padding: 11px 12px; color: #303447; background: #fff; border: 1px solid #ded9ee; border-radius: 10px; outline: none; }
+      .fields textarea { min-height: 96px; resize: vertical; line-height: 1.55; }
+      .field-grid { display: grid; grid-template-columns: 1fr 130px; gap: 10px; }
+      .form-actions { display: flex; justify-content: flex-end; gap: 10px; }
+      .form-actions button { min-height: 40px; padding: 0 16px; border-radius: 10px; border: 1px solid #ded9ee; background: #fff; cursor: pointer; font-weight: 800; }
+      .form-actions .primary { color: #fff; background: #7048ff; border-color: #7048ff; }
+      .comment-list { display: grid; gap: 18px; padding: 20px 22px 24px; }
+      .comment-row { display: grid; grid-template-columns: 92px 1fr; gap: 16px; }
+      .rail { display: grid; justify-items: center; color: #25283b; font-weight: 900; }
+      .rail button { display: grid; width: 46px; height: 46px; margin-top: 8px; place-items: center; color: #fff; background: linear-gradient(135deg, #9a5bff, #6846f5); border: 0; border-radius: 50%; cursor: pointer; }
+      .rail-line { width: 2px; min-height: 42px; margin-top: 8px; background: #aa8cff; }
+      .comment-card { position: relative; padding: 20px 18px; background: #fff; border: 1px solid #ded6ff; border-radius: 16px; }
+      .comment-card::before { content: ""; position: absolute; left: -9px; top: 34px; width: 16px; height: 16px; background: #fff; border-left: 1px solid #ded6ff; border-bottom: 1px solid #ded6ff; transform: rotate(45deg); }
+      .comment-head { display: flex; justify-content: space-between; gap: 12px; margin-bottom: 8px; }
+      .comment-head strong { font-size: 18px; }
+      .tag { display: inline-flex; margin-left: 8px; padding: 3px 8px; color: #7048ff; background: #f3eeff; border: 1px solid #dacdff; border-radius: 7px; font-size: 13px; }
+      .comment-tools { display: flex; gap: 8px; }
+      .comment-tools button { display: grid; width: 34px; height: 34px; place-items: center; color: #5e6478; background: #fff; border: 0; cursor: pointer; }
+      .comment-card p { margin: 0; color: #5a6075; line-height: 1.75; }
+      .add-empty { display: grid; min-height: 92px; place-items: center; color: #7048ff; border: 1px dashed #a98bff; border-radius: 14px; cursor: pointer; font-weight: 900; }
+      .mini-player { position: sticky; bottom: 12px; display: grid; grid-template-columns: auto 1fr auto; gap: 12px; align-items: center; margin-top: 20px; padding: 14px 18px; }
+      .mini-player .play { width: 44px; height: 44px; }
+      .mini-title strong, .mini-title span { display: block; }
+      .mini-title span { margin-top: 4px; color: #777d92; }
+      .mini-time { color: #7048ff; font-weight: 900; }
+      audio { position: absolute; width: 1px; height: 1px; opacity: 0; pointer-events: none; }
+      @media (max-width: 640px) {
+        .page { padding: 0; }
+        .hero-card, .timeline-card, .mini-player { border-radius: 0; }
+        .hero-card { grid-template-columns: 1fr auto; padding: 18px; }
+        .back { grid-column: 1 / -1; justify-self: start; }
+        .cover { width: 84px; grid-column: 2; grid-row: 2; }
+        .top-actions { grid-column: 1 / -1; grid-template-columns: 1fr auto; align-items: center; justify-items: stretch; }
+        .player-row { grid-template-columns: auto auto 1fr; }
+        .skip, .volume-button, .volume { display: none; }
+        .feedback-form, .comment-row { grid-template-columns: 1fr; }
+        .rail { grid-template-columns: 76px auto; justify-content: start; gap: 10px; }
+        .rail-line { display: none; }
+      }
+    </style>
+  </head>
+  <body>
+    <main class="page">
+      <section class="hero-card">
+        <a class="back" href="${escapeHtml(shareUrl)}" aria-label="返回分享页"><svg class="icon" viewBox="0 0 24 24"><path d="M19 12H5" /><path d="m12 19-7-7 7-7" /></svg></a>
+        ${heroImageUrl ? `<img class="cover" src="${heroImageUrl}" alt="歌曲封面" />` : '<span class="cover"></span>'}
+        <div class="song">
+          <h1>${title}<span class="version">${versionLabel}</span></h1>
+          <div class="song-sub">${creatorName} · ${creatorRole}</div>
+          <div class="song-meta">时长 <span id="durationMeta">--:--</span> ｜ 由 AI 生成</div>
+        </div>
+        <div class="top-actions">
+          <button id="submitTop" class="submit-top" type="button">提交反馈</button>
+          <button id="switchPlay" class="switch" type="button" aria-label="播放"><svg viewBox="0 0 24 24"><path d="M8 5v14l11-7z" /></svg></button>
+          <span>切换版本</span>
+        </div>
+      </section>
+
+      <section class="timeline-card">
+        ${audioUrl ? `<audio id="feedbackAudio" preload="metadata" src="${audioUrl}"></audio>` : ""}
+        <div class="player-row">
+          <button id="mainPlay" class="play" type="button" aria-label="播放"><svg viewBox="0 0 24 24"><path d="M8 5v14l11-7z" /></svg></button>
+          <span id="currentLabel" class="clock">0:00</span>
+          <span id="totalLabel" class="duration">/ --:--</span>
+          <button id="back5" class="skip" type="button">↶5</button>
+          <button id="forward5" class="skip" type="button">5↷</button>
+          <button class="volume-button" type="button"><svg class="icon" viewBox="0 0 24 24"><path d="M11 5 6 9H3v6h3l5 4z" /><path d="M16 9a5 5 0 0 1 0 6" /></svg></button>
+          <input id="volumeRange" class="volume" type="range" min="0" max="1" step="0.01" value="0.8" aria-label="音量" />
+        </div>
+        <div id="wavePanel" class="wave-panel">
+          <div id="playhead" class="playhead" data-time="0:00"></div>
+          <div id="wave" class="wave">${bars}</div>
+          <div id="ticks" class="ticks"></div>
+        </div>
+        <div class="hint-row">
+          <span>点击时间轴上的任意位置，添加你的反馈意见</span>
+          <button id="clearAll" type="button">清空全部</button>
+        </div>
+        <div id="feedbackForm" class="feedback-form">
+          <div class="time-box" id="selectedTimeLabel">0:00</div>
+          <div class="fields">
+            <div class="field-grid">
+              <input id="feedbackTitle" maxlength="40" placeholder="例如：主歌情绪" />
+              <select id="feedbackCategory" aria-label="反馈类型">
+                <option value="建议">建议</option>
+                <option value="喜欢">喜欢</option>
+                <option value="问题">问题</option>
+              </select>
+            </div>
+            <textarea id="feedbackText" maxlength="500" placeholder="写下这一段的修改建议、喜欢/不喜欢的地方..."></textarea>
+            <div class="form-actions">
+              <button id="cancelFeedback" type="button">取消</button>
+              <button id="saveFeedback" class="primary" type="button">保存反馈</button>
+            </div>
+            <div id="feedbackMessage"></div>
+          </div>
+        </div>
+        <div id="commentList" class="comment-list"></div>
+      </section>
+
+      <section class="mini-player">
+        <button id="miniPlay" class="play" type="button" aria-label="播放"><svg viewBox="0 0 24 24"><path d="M8 5v14l11-7z" /></svg></button>
+        <div class="mini-title"><strong>${title} <span class="version">${versionLabel}</span></strong><span id="miniDuration">--:--</span></div>
+        <span id="miniTime" class="mini-time">0:00 / --:--</span>
+      </section>
+    </main>
+    <script>
+      const token = ${JSON.stringify(share.token)};
+      let comments = ${comments};
+      const audio = document.getElementById("feedbackAudio");
+      const mainPlay = document.getElementById("mainPlay");
+      const miniPlay = document.getElementById("miniPlay");
+      const switchPlay = document.getElementById("switchPlay");
+      const currentLabel = document.getElementById("currentLabel");
+      const totalLabel = document.getElementById("totalLabel");
+      const miniTime = document.getElementById("miniTime");
+      const durationMeta = document.getElementById("durationMeta");
+      const miniDuration = document.getElementById("miniDuration");
+      const wavePanel = document.getElementById("wavePanel");
+      const waveBars = [...document.querySelectorAll("#wave span")];
+      const playhead = document.getElementById("playhead");
+      const ticks = document.getElementById("ticks");
+      const form = document.getElementById("feedbackForm");
+      const selectedTimeLabel = document.getElementById("selectedTimeLabel");
+      const feedbackTitle = document.getElementById("feedbackTitle");
+      const feedbackCategory = document.getElementById("feedbackCategory");
+      const feedbackText = document.getElementById("feedbackText");
+      const feedbackMessage = document.getElementById("feedbackMessage");
+      const commentList = document.getElementById("commentList");
+      let selectedTime = 0;
+
+      function formatTime(seconds) {
+        const value = Math.max(0, Math.floor(Number(seconds) || 0));
+        return Math.floor(value / 60) + ":" + String(value % 60).padStart(2, "0");
+      }
+      function duration() {
+        return audio && Number.isFinite(audio.duration) && audio.duration ? audio.duration : 181;
+      }
+      function playIcon(paused) {
+        return paused ? '<svg viewBox="0 0 24 24"><path d="M8 5v14l11-7z" /></svg>' : '<svg viewBox="0 0 24 24"><path d="M7 5h4v14H7zm6 0h4v14h-4z" /></svg>';
+      }
+      function syncButtons() {
+        const html = playIcon(!audio || audio.paused);
+        mainPlay.innerHTML = html;
+        miniPlay.innerHTML = html;
+        switchPlay.innerHTML = html;
+      }
+      function seekTo(seconds) {
+        selectedTime = Math.max(0, Math.min(duration(), Number(seconds) || 0));
+        if (audio) audio.currentTime = selectedTime;
+        updatePlayback();
+      }
+      function updatePlayback() {
+        const total = duration();
+        const current = audio ? audio.currentTime : selectedTime;
+        const ratio = total ? Math.max(0, Math.min(1, current / total)) : 0;
+        currentLabel.textContent = formatTime(current);
+        totalLabel.textContent = "/ " + formatTime(total);
+        miniTime.textContent = formatTime(current) + " / " + formatTime(total);
+        durationMeta.textContent = formatTime(total);
+        miniDuration.textContent = formatTime(total);
+        playhead.style.left = (22 + ratio * Math.max(0, wavePanel.clientWidth - 44)) + "px";
+        playhead.dataset.time = formatTime(current);
+        waveBars.forEach((bar, index) => bar.classList.toggle("active", index / waveBars.length <= ratio));
+      }
+      function openFormAt(seconds) {
+        selectedTime = Math.max(0, Math.min(duration(), Number(seconds) || 0));
+        selectedTimeLabel.textContent = formatTime(selectedTime);
+        feedbackTitle.value = "";
+        feedbackCategory.value = "建议";
+        feedbackText.value = "";
+        feedbackMessage.textContent = "";
+        form.classList.add("show");
+        seekTo(selectedTime);
+        feedbackTitle.focus();
+      }
+      function renderTicks() {
+        const total = duration();
+        ticks.innerHTML = Array.from({ length: 7 }, (_, index) => '<span>' + formatTime((total / 6) * index) + '</span>').join("");
+      }
+      function renderComments() {
+        comments.sort((a, b) => a.timeSeconds - b.timeSeconds);
+        commentList.innerHTML = comments.map((comment, index) => '<article class="comment-row"><div class="rail"><span>' + formatTime(comment.timeSeconds) + '</span><button type="button" data-seek="' + comment.timeSeconds + '">' + playIcon(true) + '</button>' + (index < comments.length - 1 ? '<span class="rail-line"></span>' : '') + '</div><div class="comment-card"><div class="comment-head"><div><strong>' + escapeHtml(comment.title || "修改建议") + '</strong><span class="tag">' + escapeHtml(comment.category || "建议") + '</span></div><div class="comment-tools"><button type="button" data-edit="' + comment.id + '">✎</button><button type="button" data-delete="' + comment.id + '">⌫</button></div></div><p>' + escapeHtml(comment.text) + '</p></div></article>').join("") + '<button id="addEmpty" class="add-empty" type="button">＋ 添加反馈（点击时间轴或此处）</button>';
+        document.querySelectorAll("[data-seek]").forEach((button) => button.addEventListener("click", () => {
+          seekTo(Number(button.dataset.seek));
+          audio?.play();
+        }));
+        document.querySelectorAll("[data-edit]").forEach((button) => button.addEventListener("click", () => {
+          const comment = comments.find((item) => item.id === button.dataset.edit);
+          if (!comment) return;
+          openFormAt(comment.timeSeconds);
+          feedbackTitle.value = comment.title || "";
+          feedbackCategory.value = comment.category || "建议";
+          feedbackText.value = comment.text || "";
+          form.dataset.editing = comment.id;
+        }));
+        document.querySelectorAll("[data-delete]").forEach((button) => button.addEventListener("click", async () => {
+          await deleteComment(button.dataset.delete);
+        }));
+        document.getElementById("addEmpty").addEventListener("click", () => openFormAt(audio?.currentTime || selectedTime || 0));
+      }
+      function escapeHtml(value) {
+        return String(value || "").replaceAll("&", "&amp;").replaceAll("<", "&lt;").replaceAll(">", "&gt;").replaceAll('"', "&quot;").replaceAll("'", "&#039;");
+      }
+      async function saveComment() {
+        const text = feedbackText.value.trim();
+        if (!text) {
+          feedbackMessage.textContent = "请填写文字反馈";
+          return;
+        }
+        const editingId = form.dataset.editing;
+        if (editingId) {
+          await fetch("/api/shares/" + encodeURIComponent(token) + "/comments/" + encodeURIComponent(editingId), { method: "DELETE" });
+        }
+        const payload = { timeSeconds: Math.round(selectedTime), rating: feedbackCategory.value === "喜欢" ? 5 : 4, title: feedbackTitle.value.trim() || "修改建议", category: feedbackCategory.value, text };
+        const response = await fetch("/api/shares/" + encodeURIComponent(token) + "/comments", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify(payload) });
+        const body = await response.json().catch(() => ({}));
+        if (!response.ok) {
+          feedbackMessage.textContent = body.message || "保存失败";
+          return;
+        }
+        if (editingId) comments = comments.filter((comment) => comment.id !== editingId);
+        comments.push(body.comment);
+        delete form.dataset.editing;
+        form.classList.remove("show");
+        renderComments();
+      }
+      async function deleteComment(id) {
+        const response = await fetch("/api/shares/" + encodeURIComponent(token) + "/comments/" + encodeURIComponent(id), { method: "DELETE" });
+        if (response.ok) {
+          comments = comments.filter((comment) => comment.id !== id);
+          renderComments();
+        }
+      }
+      async function clearAll() {
+        const response = await fetch("/api/shares/" + encodeURIComponent(token) + "/comments", { method: "DELETE" });
+        if (response.ok) {
+          comments = [];
+          renderComments();
+        }
+      }
+      function togglePlay() {
+        if (!audio) return;
+        if (audio.paused) audio.play();
+        else audio.pause();
+      }
+      audio?.addEventListener("loadedmetadata", () => { renderTicks(); updatePlayback(); });
+      audio?.addEventListener("timeupdate", updatePlayback);
+      audio?.addEventListener("play", syncButtons);
+      audio?.addEventListener("pause", syncButtons);
+      mainPlay.addEventListener("click", togglePlay);
+      miniPlay.addEventListener("click", togglePlay);
+      switchPlay.addEventListener("click", togglePlay);
+      document.getElementById("back5").addEventListener("click", () => seekTo((audio?.currentTime || 0) - 5));
+      document.getElementById("forward5").addEventListener("click", () => seekTo((audio?.currentTime || 0) + 5));
+      document.getElementById("volumeRange").addEventListener("input", (event) => { if (audio) audio.volume = Number(event.target.value); });
+      wavePanel.addEventListener("click", (event) => {
+        const rect = wavePanel.getBoundingClientRect();
+        openFormAt(((event.clientX - rect.left) / rect.width) * duration());
+      });
+      document.getElementById("saveFeedback").addEventListener("click", saveComment);
+      document.getElementById("submitTop").addEventListener("click", saveComment);
+      document.getElementById("cancelFeedback").addEventListener("click", () => form.classList.remove("show"));
+      document.getElementById("clearAll").addEventListener("click", clearAll);
+      renderTicks();
+      renderComments();
+      updatePlayback();
+      syncButtons();
     </script>
   </body>
 </html>`;
@@ -569,6 +886,17 @@ function normalizeSongAnalysis(value, fallback) {
     arrangement_summary: truncateText(analysis.arrangement_summary || fallback.arrangement_summary, 30),
     recommendations,
     recommendation: recommendations[0]
+  };
+}
+
+function normalizeNoInspirationPrompt(value) {
+  const prompt = value && typeof value === "object" ? value : {};
+  return {
+    theme: truncateText(prompt.theme || "无灵感 Demo", 20),
+    mood: listFromValue(prompt.mood, ["松弛", "有画面", "治愈"]).slice(0, 3),
+    music_style: listFromValue(prompt.music_style, ["Pop", "Chill"]).slice(0, 2),
+    instrumentation: listFromValue(prompt.instrumentation, ["合成器", "贝斯", "鼓组"]).slice(0, 3),
+    music_prompt: Array.from(String(prompt.music_prompt || "").trim()).slice(0, 150).join("")
   };
 }
 
@@ -778,7 +1106,7 @@ app.post("/api/suno/generate", async (req, res, next) => {
   } catch (error) { next(error); }
 });
 
-app.post("/api/suno/add-instrumental", async (req, res, next) => {
+async function handleUploadCoverAudio(req, res, next) {
   try {
     const {
       audioBase64,
@@ -815,9 +1143,11 @@ app.post("/api/suno/add-instrumental", async (req, res, next) => {
 
     const payload = {
       uploadUrl: `${publicBaseUrl}/uploads/${filename}`,
+      customMode: true,
+      instrumental: true,
       title,
+      style: tags,
       negativeTags,
-      tags,
       callBackUrl: effectiveCallback,
       styleWeight: Number(styleWeight),
       weirdnessConstraint: Number(weirdnessConstraint),
@@ -826,13 +1156,16 @@ app.post("/api/suno/add-instrumental", async (req, res, next) => {
     };
     if (vocalGender === "m" || vocalGender === "f") payload.vocalGender = vocalGender;
 
-    const body = await sunoFetch(`${SUNO_BASE_URL}/generate/add-instrumental`, {
+    const body = await sunoFetch(`${SUNO_BASE_URL}/generate/upload-cover`, {
       method: "POST",
       body: JSON.stringify(payload)
     });
-    res.json({ taskId: body.data?.taskId, uploadUrl: payload.uploadUrl });
+    res.json({ taskId: body.data?.taskId, uploadUrl: payload.uploadUrl, api: "upload-cover" });
   } catch (error) { next(error); }
-});
+}
+
+app.post("/api/suno/upload-cover", handleUploadCoverAudio);
+app.post("/api/suno/add-instrumental", handleUploadCoverAudio);
 
 app.post("/api/speech/transcribe", async (req, res, next) => {
   try {
@@ -875,26 +1208,36 @@ app.get("/api/suno/tasks/:taskId", async (req, res, next) => {
   try {
     const taskId = req.params.taskId;
     const query = new URLSearchParams({ taskId });
-    const body = await sunoFetch(`${SUNO_BASE_URL}/generate/record-info?${query}`);
+    let body;
+    try {
+      body = await sunoFetch(`${SUNO_BASE_URL}/generate/record-info?${query}`);
+    } catch (error) {
+      const callback = callbackCache.get(taskId) || null;
+      if (!callback) throw error;
+      const callbackStatus = statusFromCallback(callback);
+      return res.json({
+        taskId,
+        status: callbackStatus || "PENDING",
+        errorCode: callbackStatus === "GENERATE_AUDIO_FAILED" ? callback.code : undefined,
+        errorMessage: callbackStatus === "GENERATE_AUDIO_FAILED" ? callback.msg : undefined,
+        tracks: tracksFromCallback(callback),
+        callback
+      });
+    }
     const data = body.data || {};
-    const tracks = (data.response?.sunoData || []).map(track => ({
-      id: track.id,
-      audioUrl: track.audioUrl,
-      streamAudioUrl: track.streamAudioUrl,
-      imageUrl: track.imageUrl,
-      prompt: track.prompt,
-      title: track.title,
-      tags: track.tags,
-      createTime: track.createTime,
-      duration: track.duration
-    }));
+    const callback = callbackCache.get(taskId) || null;
+    const recordTracks = (data.response?.sunoData || []).map(normalizeSunoTrack);
+    const callbackTracks = tracksFromCallback(callback);
+    const callbackStatus = statusFromCallback(callback);
+    const effectiveStatus = mergeTaskStatus(data.status, callbackStatus);
+    const tracks = callbackTracks.length && ["SUCCESS", "FIRST_SUCCESS"].includes(callbackStatus) ? callbackTracks : (recordTracks.length ? recordTracks : callbackTracks);
     res.json({
-      taskId: data.taskId,
-      status: data.status,
-      errorCode: data.errorCode,
-      errorMessage: data.errorMessage,
+      taskId: data.taskId || taskId,
+      status: effectiveStatus,
+      errorCode: data.errorCode || (callback && callback.code !== 200 ? callback.code : undefined),
+      errorMessage: data.errorMessage || (callbackStatus === "GENERATE_AUDIO_FAILED" ? callback?.msg : undefined),
       tracks,
-      callback: callbackCache.get(taskId) || null
+      callback
     });
   } catch (error) { next(error); }
 });
@@ -965,10 +1308,74 @@ app.post("/api/image-caption", async (req, res, next) => {
   } catch (error) { next(error); }
 });
 
+app.post("/api/no-inspiration-prompt", async (req, res, next) => {
+  try {
+    const { environment, currentState, musicRemedy } = req.body || {};
+    const selections = [
+      ["environment", environment, "窗外环境"],
+      ["currentState", currentState, "当前状态"],
+      ["musicRemedy", musicRemedy, "音乐解药"]
+    ];
+    for (const [, value, label] of selections) {
+      if (!value?.text || !value?.mapping) return res.status(400).json({ message: `请选择${label}` });
+    }
+
+    const response = await fetch(DASHSCOPE_MULTIMODAL_URL, {
+      method: "POST",
+      headers: {
+        Authorization: `Bearer ${requireDashScopeApiKey()}`,
+        "Content-Type": "application/json"
+      },
+      body: JSON.stringify({
+        model: "qwen3.7-flash",
+        input: {
+          messages: [
+            { role: "system", content: NO_INSPIRATION_PROMPT },
+            {
+              role: "user",
+              content: [
+                {
+                  text: JSON.stringify({
+                    environment: environment.text,
+                    environment_mapping: environment.mapping,
+                    current_state: currentState.text,
+                    current_state_mapping: currentState.mapping,
+                    music_remedy: musicRemedy.text,
+                    music_remedy_mapping: musicRemedy.mapping
+                  }, null, 2)
+                }
+              ]
+            }
+          ]
+        }
+      })
+    });
+    const body = await response.json().catch(() => ({}));
+    if (!response.ok || body.code) {
+      const error = new Error(body.message || body.msg || `DashScope 无灵感 Prompt 生成失败：${response.status}`);
+      error.status = response.status >= 400 ? response.status : 502;
+      error.details = body;
+      throw error;
+    }
+    const content = body.output?.choices?.[0]?.message?.content;
+    const text = Array.isArray(content) ? content.find((item) => item.text)?.text : content;
+    const prompt = normalizeNoInspirationPrompt(parseJsonText(text));
+    if (!prompt.music_prompt) throw new Error("无灵感 Prompt 结果缺少 music_prompt");
+    res.json({ prompt, rawText: text });
+  } catch (error) { next(error); }
+});
+
 app.post("/api/suno/callback", (req, res) => {
   const payload = req.body || {};
-  const taskId = payload.data?.task_id;
-  if (taskId) callbackCache.set(taskId, payload);
+  const taskId = callbackTaskId(payload);
+  if (taskId) {
+    const previous = callbackCache.get(taskId);
+    const previousStatus = statusFromCallback(previous);
+    const nextStatus = statusFromCallback(payload);
+    const previousRank = { TEXT_SUCCESS: 1, FIRST_SUCCESS: 2, SUCCESS: 3, GENERATE_AUDIO_FAILED: 4 }[previousStatus] || 0;
+    const nextRank = { TEXT_SUCCESS: 1, FIRST_SUCCESS: 2, SUCCESS: 3, GENERATE_AUDIO_FAILED: 4 }[nextStatus] || 0;
+    callbackCache.set(taskId, nextRank >= previousRank ? payload : previous);
+  }
   res.status(200).json({ status: "received" });
 });
 
@@ -1079,6 +1486,8 @@ app.post("/api/shares/:token/comments", (req, res) => {
   const rawRating = Math.round(Number(req.body?.rating) || 0);
   const rating = Math.max(1, Math.min(5, rawRating));
   const text = String(req.body?.text || "").trim();
+  const title = String(req.body?.title || "修改建议").trim().slice(0, 40) || "修改建议";
+  const category = String(req.body?.category || "建议").trim().slice(0, 12) || "建议";
   const timeSeconds = Math.max(0, Math.round(Number(req.body?.timeSeconds) || 0));
   if (rawRating < 1 || rawRating > 5) return res.status(400).json({ message: "请先打星" });
   if (!text) return res.status(400).json({ message: "请填写文字反馈" });
@@ -1088,6 +1497,8 @@ app.post("/api/shares/:token/comments", (req, res) => {
     id: randomToken(),
     timeSeconds,
     rating,
+    title,
+    category,
     text,
     createdAt: new Date().toISOString()
   };
@@ -1095,6 +1506,35 @@ app.post("/api/shares/:token/comments", (req, res) => {
   share.comments.push(comment);
   writeShares(shares);
   res.json({ comment });
+});
+
+app.delete("/api/shares/:token/comments/:commentId", (req, res) => {
+  const shares = readShares();
+  const share = shares[req.params.token];
+  if (!share) return res.status(404).json({ message: "分享链接不存在" });
+  share.comments = Array.isArray(share.comments) ? share.comments.filter((comment) => comment.id !== req.params.commentId) : [];
+  writeShares(shares);
+  res.json({ ok: true });
+});
+
+app.delete("/api/shares/:token/comments", (req, res) => {
+  const shares = readShares();
+  const share = shares[req.params.token];
+  if (!share) return res.status(404).json({ message: "分享链接不存在" });
+  share.comments = [];
+  writeShares(shares);
+  res.json({ ok: true });
+});
+
+app.get("/s/:token/feedback", (req, res) => {
+  const share = readShares()[req.params.token];
+  if (!share || !share.is_active || !share.audioUrl) {
+    return res.status(!share ? 404 : share.is_active ? 404 : 410).send(`<!doctype html>
+<html lang="zh-CN"><head><meta charset="UTF-8" /><meta name="viewport" content="width=device-width, initial-scale=1.0" /><title>反馈不可用</title>
+<style>body{margin:0;min-height:100vh;display:grid;place-items:center;padding:24px;color:#555c70;background:#f7f7fb;font-family:ui-sans-serif,system-ui,-apple-system,BlinkMacSystemFont,"PingFang SC","Microsoft YaHei",sans-serif}.box{max-width:360px;text-align:center;background:#fff;border:1px solid #e7e8f0;border-radius:16px;padding:28px;box-shadow:0 18px 42px rgba(35,32,69,.1)}h1{margin:0 0 10px;color:#101223;font-size:24px}</style></head>
+<body><div class="box"><h1>反馈不可用</h1><p>${!share ? "Token 无效，找不到这个分享。" : share.is_active ? "音频不存在或已失效。" : "这个分享已被关闭。"}</p></div></body></html>`);
+  }
+  res.type("html").send(makeFeedbackPage(share, `${publicBaseUrl(req)}/s/${share.token}`));
 });
 
 app.get("/s/:token", (req, res) => {
