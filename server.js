@@ -14,6 +14,8 @@ const uploadsDir = process.env.UPLOADS_DIR
   || (storageDir ? path.join(storageDir, "uploads") : path.join(__dirname, "uploads"));
 const dataDir = storageDir ? path.join(storageDir, "data") : path.join(__dirname, "data");
 const sharesFile = process.env.SHARES_FILE || path.join(dataDir, "shares.json");
+const shareImagesDir = process.env.SHARE_IMAGES_DIR
+  || path.join(__dirname, "project", "分享图打包");
 const SHARE_ACCESS_TYPE_PUBLIC = "public_link";
 const SHARE_ACCESS_TYPE_PASSWORD = "password";
 const SHARE_UNLOCK_TTL_MS = 24 * 60 * 60 * 1000;
@@ -21,6 +23,7 @@ const SHARE_UNLOCK_WINDOW_MS = 10 * 60 * 1000;
 const SHARE_UNLOCK_MAX_FAILURES = 5;
 const SHARE_PASSWORD_KEY_LENGTH = 64;
 const DUMMY_PASSWORD_SALT = "00000000000000000000000000000000";
+const SHARE_IMAGE_EXTENSIONS = new Set([".jpg", ".jpeg", ".png", ".webp"]);
 const DASHSCOPE_MULTIMODAL_URL = "https://dashscope.aliyuncs.com/api/v1/services/aigc/multimodal-generation/generation";
 const DASHSCOPE_ASR_URL = "https://dashscope.aliyuncs.com/api/v1/services/audio/asr/transcription";
 const DASHSCOPE_TASK_URL = "https://dashscope.aliyuncs.com/api/v1/tasks";
@@ -81,10 +84,18 @@ app.set("trust proxy", 1);
 app.use(express.json({ limit: "25mb" }));
 
 app.get("/health", (_req, res) => {
-  res.status(200).json({ status: "ok" });
+  res.status(200).json({
+    status: "ok",
+    commit: process.env.RENDER_GIT_COMMIT || "local"
+  });
 });
 
 app.use("/uploads", express.static(uploadsDir));
+app.use("/share-images", express.static(shareImagesDir, {
+  dotfiles: "deny",
+  fallthrough: true,
+  index: false
+}));
 app.use(express.static(__dirname));
 
 function readShares() {
@@ -116,6 +127,43 @@ function escapeHtml(value = "") {
 
 function randomToken() {
   return crypto.randomBytes(4).toString("hex").slice(0, 6);
+}
+
+function availableShareImages() {
+  let entries;
+  try {
+    entries = fs.readdirSync(shareImagesDir, { withFileTypes: true });
+  } catch {
+    const error = new Error("分享图片目录不可用，请检查服务端资源配置");
+    error.status = 500;
+    throw error;
+  }
+
+  return entries
+    .filter((entry) => (
+      entry.isFile()
+      && SHARE_IMAGE_EXTENSIONS.has(path.extname(entry.name).toLowerCase())
+    ))
+    .map((entry) => entry.name)
+    .sort();
+}
+
+function selectShareHeroImageUrls(count) {
+  const candidates = availableShareImages();
+  if (candidates.length < count) {
+    const error = new Error(`分享图片资源不足，至少需要 ${count} 张`);
+    error.status = 500;
+    throw error;
+  }
+
+  for (let index = candidates.length - 1; index > 0; index -= 1) {
+    const swapIndex = crypto.randomInt(index + 1);
+    [candidates[index], candidates[swapIndex]] = [candidates[swapIndex], candidates[index]];
+  }
+
+  return candidates
+    .slice(0, count)
+    .map((filename) => `/share-images/${encodeURIComponent(filename)}`);
 }
 
 function scryptAccessCode(accessCode, salt) {
@@ -805,7 +853,6 @@ app.post("/api/shares", async (req, res, next) => {
       audioUrl,
       styleTags = [],
       versionLabel,
-      heroImageUrl = "",
       accessType = SHARE_ACCESS_TYPE_PUBLIC,
       accessCode: rawAccessCode = ""
     } = req.body || {};
@@ -827,9 +874,10 @@ app.post("/api/shares", async (req, res, next) => {
       { name: "灵感卡片", inspiration: inspiration || "来自一段文字、图片和哼唱灵感" },
       { name: "歌词优先", inspiration: lyrics ? lyrics.split(/\n+/).find(Boolean) : inspiration }
     ];
+    const heroImageUrls = selectShareHeroImageUrls(variants.length);
 
     const candidates = [];
-    for (const variant of variants) {
+    for (const [index, variant] of variants.entries()) {
       let token = randomToken();
       while (shares[token]) token = randomToken();
       const protectedCredentials = accessType === SHARE_ACCESS_TYPE_PASSWORD
@@ -850,7 +898,7 @@ app.post("/api/shares", async (req, res, next) => {
         audioUrl,
         styleTags: Array.isArray(styleTags) ? styleTags : String(styleTags).split(",").map((item) => item.trim()).filter(Boolean),
         versionLabel,
-        heroImageUrl,
+        heroImageUrl: heroImageUrls[index],
         createdAt: new Date().toISOString()
       };
       shares[token] = share;
@@ -864,7 +912,8 @@ app.post("/api/shares", async (req, res, next) => {
           title: share.title,
           inspiration: share.inspiration,
           styleTags: share.styleTags,
-          versionLabel: share.versionLabel
+          versionLabel: share.versionLabel,
+          heroImageUrl: share.heroImageUrl
         }
       });
     }

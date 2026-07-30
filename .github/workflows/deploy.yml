@@ -35,8 +35,19 @@ jobs:
       - name: Install dependencies
         run: npm ci
 
-      - name: Check server syntax
-        run: npm run check
+      - name: Run automated tests
+        run: npm test
+
+      - name: Verify bundled share images
+        shell: bash
+        run: |
+          image_count="$(find "project/分享图打包" -maxdepth 1 -type f \
+            \( -iname "*.png" -o -iname "*.jpg" -o -iname "*.jpeg" -o -iname "*.webp" \) \
+            | wc -l | tr -d " ")"
+          if [ "${image_count}" -lt 3 ]; then
+            echo "Expected at least 3 bundled share images, found ${image_count}."
+            exit 1
+          fi
 
       - name: Smoke test
         shell: bash
@@ -63,7 +74,7 @@ jobs:
     if: github.event_name != 'pull_request'
     needs: verify
     runs-on: ubuntu-latest
-    timeout-minutes: 5
+    timeout-minutes: 20
     environment: demo
 
     steps:
@@ -75,3 +86,24 @@ jobs:
           curl --fail-with-body \
             --request POST \
             "${RENDER_DEPLOY_HOOK_URL}&ref=${COMMIT_SHA}"
+
+      - name: Wait for the deployed commit
+        env:
+          COMMIT_SHA: ${{ github.sha }}
+          LIVE_BASE_URL: https://melodyflow-demo.onrender.com
+        shell: bash
+        run: |
+          for attempt in {1..90}; do
+            health_body="$(curl --fail --silent --max-time 10 \
+              "${LIVE_BASE_URL}/health" || true)"
+            live_commit="$(jq --raw-output '.commit // empty' <<<"${health_body}")"
+            if [ "${live_commit}" = "${COMMIT_SHA}" ]; then
+              echo "Verified deployed commit ${COMMIT_SHA}."
+              exit 0
+            fi
+            echo "Waiting for Render deployment (${attempt}/90); live commit: ${live_commit:-unavailable}"
+            sleep 10
+          done
+
+          echo "Render did not expose commit ${COMMIT_SHA} within 15 minutes."
+          exit 1

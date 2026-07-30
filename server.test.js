@@ -6,10 +6,27 @@ const { after, before, test } = require("node:test");
 
 const testDataDir = fs.mkdtempSync(path.join(os.tmpdir(), "melodyflow-share-test-"));
 const testSharesFile = path.join(testDataDir, "shares.json");
+const testShareImagesDir = path.join(testDataDir, "share-images");
 const testSecret = "test-share-session-secret-with-more-than-32-characters";
+const testPng = Buffer.from(
+  "iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAQAAAC1HAwCAAAAC0lEQVR42mNk+A8AAQUBAScY42YAAAAASUVORK5CYII=",
+  "base64"
+);
+const testShareImageNames = [
+  "候选图片 1.png",
+  "候选图片 2.png",
+  "候选图片 3.png",
+  "候选图片 4.png"
+];
+
+fs.mkdirSync(testShareImagesDir, { recursive: true });
+for (const filename of testShareImageNames) {
+  fs.writeFileSync(path.join(testShareImagesDir, filename), testPng);
+}
 
 process.env.SHARES_FILE = testSharesFile;
 process.env.UPLOADS_DIR = path.join(testDataDir, "uploads");
+process.env.SHARE_IMAGES_DIR = testShareImagesDir;
 process.env.SHARE_SESSION_SECRET = testSecret;
 process.env.PUBLIC_BASE_URL = "http://test.invalid";
 
@@ -63,17 +80,58 @@ function cookiePair(setCookieHeader) {
 }
 
 test("公开分享保持无需密码即可访问", async () => {
-  const createResponse = await postJson("/api/shares", sharePayload());
+  const createResponse = await postJson("/api/shares", sharePayload({
+    heroImageUrl: "https://images.example/should-not-be-used.png"
+  }));
   assert.equal(createResponse.status, 200);
   const { candidates } = await createResponse.json();
   assert.equal(candidates.length, 3);
   assert.equal(candidates[0].requiresPassword, false);
   assert.equal(candidates[0].previewUrl, `/s/${candidates[0].token}`);
 
+  const heroImageUrls = candidates.map((candidate) => candidate.preview.heroImageUrl);
+  assert.equal(new Set(heroImageUrls).size, 3);
+  assert.ok(heroImageUrls.every((url) => url.startsWith("/share-images/")));
+  assert.ok(heroImageUrls.every((url) => !url.includes("should-not-be-used")));
+
+  for (const heroImageUrl of heroImageUrls) {
+    const imageResponse = await fetch(`${baseUrl}${heroImageUrl}`);
+    assert.equal(imageResponse.status, 200);
+    assert.equal(imageResponse.headers.get("content-type"), "image/png");
+    assert.deepEqual(Buffer.from(await imageResponse.arrayBuffer()), testPng);
+  }
+
+  const storedShares = JSON.parse(fs.readFileSync(testSharesFile, "utf8"));
+  for (const candidate of candidates) {
+    assert.equal(
+      storedShares[candidate.token].heroImageUrl,
+      candidate.preview.heroImageUrl
+    );
+  }
+
   const pageResponse = await fetch(`${baseUrl}/s/${candidates[0].token}`);
   const pageHtml = await pageResponse.text();
   assert.equal(pageResponse.status, 200);
   assert.match(pageHtml, /private-song\.mp3/);
+  assert.ok(pageHtml.includes(candidates[0].preview.heroImageUrl));
+  assert.doesNotMatch(pageHtml, /顶部图片留空/);
+});
+
+test("健康检查返回当前 Render commit", async () => {
+  const previousCommit = process.env.RENDER_GIT_COMMIT;
+  process.env.RENDER_GIT_COMMIT = "test-render-commit";
+
+  try {
+    const response = await fetch(`${baseUrl}/health`);
+    assert.equal(response.status, 200);
+    assert.deepEqual(await response.json(), {
+      status: "ok",
+      commit: "test-render-commit"
+    });
+  } finally {
+    if (previousCommit === undefined) delete process.env.RENDER_GIT_COMMIT;
+    else process.env.RENDER_GIT_COMMIT = previousCommit;
+  }
 });
 
 test("持久化上传目录可以通过 uploads 路由访问", async () => {
@@ -231,4 +289,29 @@ test("密码分享只在有效 Cookie 下返回内容", async () => {
   );
   assert.equal(missingResponse.status, 401);
   assert.equal((await missingResponse.json()).message, "密码错误或分享不可用");
+});
+
+test("分享图片不足三张时拒绝创建且不写入记录", async () => {
+  const disabledPaths = testShareImageNames.slice(2).map((filename) => ({
+    original: path.join(testShareImagesDir, filename),
+    disabled: path.join(testShareImagesDir, `${filename}.disabled`)
+  }));
+  const beforeShares = JSON.parse(fs.readFileSync(testSharesFile, "utf8"));
+
+  for (const imagePath of disabledPaths) {
+    fs.renameSync(imagePath.original, imagePath.disabled);
+  }
+
+  try {
+    const response = await postJson("/api/shares", sharePayload());
+    assert.equal(response.status, 500);
+    assert.equal((await response.json()).message, "分享图片资源不足，至少需要 3 张");
+
+    const afterShares = JSON.parse(fs.readFileSync(testSharesFile, "utf8"));
+    assert.deepEqual(afterShares, beforeShares);
+  } finally {
+    for (const imagePath of disabledPaths) {
+      fs.renameSync(imagePath.disabled, imagePath.original);
+    }
+  }
 });
