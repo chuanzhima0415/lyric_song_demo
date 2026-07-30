@@ -29,6 +29,7 @@ process.env.UPLOADS_DIR = path.join(testDataDir, "uploads");
 process.env.SHARE_IMAGES_DIR = testShareImagesDir;
 process.env.SHARE_SESSION_SECRET = testSecret;
 process.env.PUBLIC_BASE_URL = "http://test.invalid";
+process.env.DASHSCOPE_API_KEY = "";
 
 const {
   app,
@@ -62,6 +63,13 @@ async function postJson(url, body, cookie = "") {
       ...(cookie ? { Cookie: cookie } : {})
     },
     body: JSON.stringify(body)
+  });
+}
+
+async function deleteJson(url, cookie = "") {
+  return fetch(`${baseUrl}${url}`, {
+    method: "DELETE",
+    headers: cookie ? { Cookie: cookie } : {}
   });
 }
 
@@ -115,6 +123,18 @@ test("公开分享保持无需密码即可访问", async () => {
   assert.match(pageHtml, /private-song\.mp3/);
   assert.ok(pageHtml.includes(candidates[0].preview.heroImageUrl));
   assert.doesNotMatch(pageHtml, /顶部图片留空/);
+  assert.match(pageHtml, /歌曲解读/);
+  assert.match(pageHtml, /歌曲描述/);
+  assert.match(pageHtml, /反馈修改意见/);
+  assert.match(pageHtml, /旋律里藏着心事/);
+  assert.doesNotMatch(pageHtml, /class="lyrics"/);
+  assert.doesNotMatch(pageHtml, /不能在锁定页泄露的歌词/);
+
+  const publicApiResponse = await fetch(`${baseUrl}/api/shares/${candidates[0].token}`);
+  const publicApiText = await publicApiResponse.text();
+  assert.equal(publicApiResponse.status, 200);
+  assert.doesNotMatch(publicApiText, /不能在锁定页泄露的歌词/);
+  assert.doesNotMatch(publicApiText, /"lyrics"/);
 });
 
 test("健康检查返回当前 Render commit", async () => {
@@ -203,6 +223,7 @@ test("密码分享只在有效 Cookie 下返回内容", async () => {
   assert.equal(typeof storedShare.access_code_hash, "string");
   assert.equal(typeof storedShare.access_code_salt, "string");
   assert.equal("access_code" in storedShare, false);
+  assert.equal("lyrics" in storedShare, false);
   assert.doesNotMatch(JSON.stringify(storedShare), new RegExp(accessCode));
 
   const lockedPageResponse = await fetch(`${baseUrl}/s/${candidates[0].token}`);
@@ -289,6 +310,103 @@ test("密码分享只在有效 Cookie 下返回内容", async () => {
   );
   assert.equal(missingResponse.status, 401);
   assert.equal((await missingResponse.json()).message, "密码错误或分享不可用");
+});
+
+test("旧分享记录使用新版卡片且不会重新展示歌词", async () => {
+  const shares = JSON.parse(fs.readFileSync(testSharesFile, "utf8"));
+  shares.legacy1 = {
+    token: "legacy1",
+    access_type: "public_link",
+    is_active: true,
+    title: "旧版分享",
+    inspiration: "旧版灵感说明",
+    lyrics: "旧记录中不应展示的完整歌词",
+    audioUrl: "https://audio.example/legacy.mp3",
+    styleTags: ["Pop"],
+    versionLabel: "v1",
+    heroImageUrl: "/share-images/%E5%80%99%E9%80%89%E5%9B%BE%E7%89%87%201.png",
+    createdAt: "2026-07-30T00:00:00.000Z"
+  };
+  fs.writeFileSync(testSharesFile, JSON.stringify(shares, null, 2));
+
+  const response = await fetch(`${baseUrl}/s/legacy1`);
+  const html = await response.text();
+  assert.equal(response.status, 200);
+  assert.match(html, /旧版分享/);
+  assert.match(html, /歌曲解读/);
+  assert.match(html, /歌曲描述/);
+  assert.match(html, /反馈修改意见/);
+  assert.doesNotMatch(html, /旧记录中不应展示的完整歌词/);
+  assert.doesNotMatch(html, /class="lyrics"/);
+});
+
+test("密码分享的反馈页和评论接口复用解锁 Cookie", async () => {
+  const accessCode = "反馈42ab";
+  const createResponse = await postJson("/api/shares", sharePayload({
+    accessType: "password",
+    accessCode
+  }));
+  assert.equal(createResponse.status, 200);
+  const { candidates } = await createResponse.json();
+  const token = candidates[0].token;
+
+  const lockedFeedbackResponse = await fetch(`${baseUrl}/s/${token}/feedback`);
+  const lockedFeedbackHtml = await lockedFeedbackResponse.text();
+  assert.equal(lockedFeedbackResponse.status, 200);
+  assert.match(lockedFeedbackHtml, /这个分享需要密码/);
+  assert.doesNotMatch(lockedFeedbackHtml, /private-song\.mp3/);
+
+  const lockedCommentResponse = await postJson(`/api/shares/${token}/comments`, {
+    timeSeconds: 42,
+    rating: 4,
+    title: "副歌情绪",
+    category: "建议",
+    text: "这里可以再克制一点"
+  });
+  assert.equal(lockedCommentResponse.status, 401);
+
+  const unlockResponse = await postJson(`/api/shares/${token}/unlock`, { accessCode });
+  assert.equal(unlockResponse.status, 200);
+  const cookie = cookiePair(unlockResponse.headers.get("set-cookie"));
+
+  const feedbackResponse = await fetch(`${baseUrl}/s/${token}/feedback`, {
+    headers: { Cookie: cookie }
+  });
+  const feedbackHtml = await feedbackResponse.text();
+  assert.equal(feedbackResponse.status, 200);
+  assert.match(feedbackHtml, /点击时间轴上的任意位置/);
+  assert.match(feedbackHtml, /private-song\.mp3/);
+
+  const createCommentResponse = await postJson(`/api/shares/${token}/comments`, {
+    timeSeconds: 42,
+    rating: 4,
+    title: "副歌情绪",
+    category: "建议",
+    text: "这里可以再克制一点"
+  }, cookie);
+  assert.equal(createCommentResponse.status, 200);
+  const { comment } = await createCommentResponse.json();
+
+  const feedbackWithCommentResponse = await fetch(`${baseUrl}/s/${token}/feedback`, {
+    headers: { Cookie: cookie }
+  });
+  assert.match(await feedbackWithCommentResponse.text(), /这里可以再克制一点/);
+
+  const lockedDeleteResponse = await deleteJson(
+    `/api/shares/${token}/comments/${comment.id}`
+  );
+  assert.equal(lockedDeleteResponse.status, 401);
+
+  const deleteResponse = await deleteJson(
+    `/api/shares/${token}/comments/${comment.id}`,
+    cookie
+  );
+  assert.equal(deleteResponse.status, 200);
+  assert.deepEqual(await deleteResponse.json(), { ok: true });
+
+  const clearResponse = await deleteJson(`/api/shares/${token}/comments`, cookie);
+  assert.equal(clearResponse.status, 200);
+  assert.deepEqual(await clearResponse.json(), { ok: true });
 });
 
 test("分享图片不足三张时拒绝创建且不写入记录", async () => {
