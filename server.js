@@ -1070,15 +1070,27 @@ async function sunoFetch(url, options = {}) {
 
 app.post("/api/suno/generate", async (req, res, next) => {
   try {
-    const { prompt, title, style, generationType = "lyrics", model = "V5", callbackUrl = "" } = req.body || {};
+    const {
+      prompt,
+      title,
+      style,
+      generationType = "lyrics",
+      customMode,
+      instrumental = false,
+      model = "V5",
+      callbackUrl = ""
+    } = req.body || {};
     const cleanPrompt = String(prompt || "").trim();
     const cleanTitle = String(title || "").trim();
     const cleanStyle = String(style || "").trim();
+    const isInstrumental = instrumental === true || instrumental === "true";
     const isDescriptionMode = generationType === "description";
+    const useCustomMode = typeof customMode === "boolean" ? customMode : (!isDescriptionMode || isInstrumental);
 
     if (!cleanPrompt) return res.status(400).json({ message: isDescriptionMode ? "歌曲描述不能为空" : "歌词不能为空" });
-    if (isDescriptionMode && cleanPrompt.length > 500) return res.status(400).json({ message: "歌曲描述最多支持 500 个字符" });
-    if (!isDescriptionMode && (!cleanTitle || !cleanStyle)) return res.status(400).json({ message: "歌词、标题和风格不能为空" });
+    if (!useCustomMode && cleanPrompt.length > 500) return res.status(400).json({ message: "歌曲描述最多支持 500 个字符" });
+    if (useCustomMode && (!cleanTitle || !cleanStyle)) return res.status(400).json({ message: "自定义模式下标题和风格不能为空" });
+    if (useCustomMode && !isInstrumental && !cleanPrompt) return res.status(400).json({ message: "歌词不能为空" });
 
     const publicBaseUrl = process.env.PUBLIC_BASE_URL?.replace(/\/$/, "");
     const effectiveCallback = callbackUrl || (publicBaseUrl ? `${publicBaseUrl}/api/suno/callback` : process.env.SUNO_CALLBACK_URL);
@@ -1087,15 +1099,20 @@ app.post("/api/suno/generate", async (req, res, next) => {
     }
 
     const payload = {
-      customMode: !isDescriptionMode,
-      instrumental: false,
+      customMode: useCustomMode,
+      instrumental: isInstrumental,
       model: model || "V5",
-      callBackUrl: effectiveCallback,
-      prompt: cleanPrompt
+      callBackUrl: effectiveCallback
     };
-    if (!isDescriptionMode) {
+    if (useCustomMode) {
+      payload.prompt = isInstrumental ? undefined : cleanPrompt;
       payload.style = cleanStyle;
       payload.title = cleanTitle;
+      if (isInstrumental && cleanPrompt) {
+        payload.style = `${cleanStyle}。创作描述：${cleanPrompt}`.slice(0, 1000);
+      }
+    } else {
+      payload.prompt = cleanPrompt;
     }
 
     const body = await sunoFetch(`${SUNO_BASE_URL}/generate`, {
@@ -1114,6 +1131,10 @@ async function handleUploadCoverAudio(req, res, next) {
       durationSeconds = 0,
       title,
       tags,
+      prompt = "",
+      generationType = "description",
+      customMode = true,
+      instrumental = true,
       negativeTags = "重金属, 激进鼓点, 噪音",
       callbackUrl = "",
       vocalGender,
@@ -1143,10 +1164,11 @@ async function handleUploadCoverAudio(req, res, next) {
 
     const payload = {
       uploadUrl: `${publicBaseUrl}/uploads/${filename}`,
-      customMode: true,
-      instrumental: true,
+      customMode: customMode !== false,
+      instrumental: instrumental !== false && instrumental !== "false",
       title,
-      style: tags,
+      style: String(prompt || "").trim() ? `${tags}。创作描述：${String(prompt).trim()}`.slice(0, 1000) : tags,
+      prompt: generationType === "lyrics" && instrumental === false ? String(prompt || "").trim() : undefined,
       negativeTags,
       callBackUrl: effectiveCallback,
       styleWeight: Number(styleWeight),

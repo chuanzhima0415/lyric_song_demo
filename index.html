@@ -860,13 +860,15 @@
 
       .api-config {
         display: grid;
-        grid-template-columns: minmax(180px, 1fr) minmax(180px, 1fr) 150px 150px;
+        grid-template-columns: minmax(180px, 1fr) minmax(180px, 1fr) 150px;
         gap: 12px;
         margin: 18px 0 0;
       }
 
       .api-config input,
-      .api-config select {
+      .api-config select,
+      .settings-summary-button,
+      .custom-style-input {
         width: 100%;
         min-height: 44px;
         padding: 0 12px;
@@ -878,30 +880,32 @@
       }
 
       .api-config input:focus,
-      .api-config select:focus {
+      .api-config select:focus,
+      .settings-summary-button:focus,
+      .custom-style-input:focus {
         border-color: var(--purple);
         box-shadow: 0 0 0 3px rgba(112,72,255,.1);
       }
 
-      .text-mode-tabs {
-        display: flex;
+      .settings-summary-button {
+        display: inline-flex;
+        align-items: center;
+        justify-content: space-between;
         gap: 10px;
-        margin: 16px 0 0;
-      }
-      .text-mode-tabs button {
-        min-height: 38px;
-        padding: 0 16px;
-        color: #51586a;
-        background: #fff;
-        border: 1px solid var(--line);
-        border-radius: 8px;
         cursor: pointer;
         font-weight: 700;
+        text-align: left;
       }
-      .text-mode-tabs button.active {
-        color: var(--purple);
-        background: #fbf9ff;
-        border-color: #a98bff;
+
+      .settings-summary-button span {
+        min-width: 0;
+        overflow: hidden;
+        text-overflow: ellipsis;
+        white-space: nowrap;
+      }
+
+      .hidden-settings {
+        display: none;
       }
 
       .generation-message {
@@ -1213,6 +1217,100 @@
       }
       .share-config .wide {
         grid-column: 1 / -1;
+      }
+
+      .creation-settings-modal {
+        width: min(760px, 100%);
+        max-height: min(780px, calc(100vh - 48px));
+        overflow: auto;
+        background: #fff;
+        border-radius: 16px;
+        box-shadow: 0 32px 80px rgba(17, 19, 34, .28);
+      }
+
+      .creation-settings-body {
+        display: grid;
+        gap: 22px;
+        padding: 24px 26px 28px;
+      }
+
+      .setting-group {
+        display: grid;
+        gap: 12px;
+      }
+
+      .setting-group-title {
+        color: #202435;
+        font-size: 15px;
+        font-weight: 800;
+      }
+
+      .segmented {
+        display: grid;
+        grid-template-columns: repeat(2, minmax(0, 1fr));
+        gap: 10px;
+      }
+
+      .setting-option {
+        min-height: 72px;
+        padding: 13px 14px;
+        color: #343848;
+        background: #fff;
+        border: 1px solid var(--line);
+        border-radius: 8px;
+        cursor: pointer;
+        text-align: left;
+      }
+
+      .setting-option strong,
+      .setting-option span {
+        display: block;
+      }
+
+      .setting-option strong {
+        font-size: 16px;
+      }
+
+      .setting-option span {
+        margin-top: 5px;
+        color: #73798d;
+        font-size: 13px;
+        line-height: 1.45;
+      }
+
+      .setting-option.active {
+        color: var(--purple);
+        background: #fbf9ff;
+        border-color: #a98bff;
+        box-shadow: 0 0 0 3px rgba(112, 72, 255, .08);
+      }
+
+      .settings-style-grid {
+        display: flex;
+        flex-wrap: wrap;
+        gap: 10px;
+      }
+
+      .settings-style-grid .chip {
+        min-height: 42px;
+      }
+
+      .custom-style-input {
+        margin-top: 2px;
+      }
+
+      .settings-note {
+        margin: -2px 0 0;
+        color: #73798d;
+        font-size: 13px;
+        line-height: 1.55;
+      }
+
+      .settings-footer {
+        display: flex;
+        justify-content: flex-end;
+        gap: 10px;
+        padding-top: 4px;
       }
       .share-candidates {
         display: grid;
@@ -1636,7 +1734,7 @@
             <textarea maxlength="1000" placeholder="输入完整歌词，支持段落、主歌和副歌..."></textarea>
             <span class="counter">0/1000</span>
           </div>
-          <div id="textModeTabs" class="text-mode-tabs" aria-label="文字生成方式">
+          <div id="textModeTabs" class="hidden-settings" aria-label="文字生成方式">
             <button class="active" type="button" data-text-mode="lyrics">基于歌词</button>
             <button type="button" data-text-mode="description">基于描述</button>
           </div>
@@ -1651,11 +1749,15 @@
               <option value="V4_5">V4.5</option>
               <option value="V4">V4</option>
             </select>
-            <select id="instrumentalSelect" aria-label="歌曲类型">
+            <select id="instrumentalSelect" class="hidden-settings" aria-label="歌曲类型">
               <option value="false" selected>带人声</option>
               <option value="true">纯音乐</option>
             </select>
           </div>
+          <button id="creationSettingsButton" class="settings-summary-button" type="button">
+            <span id="creationSettingsSummary">基于歌词 · 带人声 · 流行 Pop</span>
+            <svg class="icon" viewBox="0 0 24 24"><path d="m6 9 6 6 6-6" /></svg>
+          </button>
           <div id="generationMessage" class="generation-message" role="status" aria-live="polite"></div>
           <div id="recordPanel" class="record-panel" aria-live="polite">
             <div class="record-copy">
@@ -1685,8 +1787,9 @@
           </div>
           <div class="style-row">
             <div>
-              <div class="style-label">风格参考 （可多选）</div>
-              <div class="chips">
+              <div class="style-label">当前设置</div>
+              <div id="inlineSettingsSummary" class="subtitle" style="margin:0">基于歌词 · 带人声 · 流行 Pop</div>
+              <div class="chips hidden-settings">
                 <button class="chip selected">流行 Pop</button>
                 <button class="chip">民谣 Folk</button>
                 <button class="chip">摇滚 Rock</button>
@@ -1784,6 +1887,66 @@
       </main>
     </div>
 
+    <div id="creationSettingsModal" class="modal-backdrop" role="dialog" aria-modal="true" aria-labelledby="creationSettingsTitle">
+      <section class="creation-settings-modal">
+        <div class="share-header">
+          <div>
+            <h2 id="creationSettingsTitle">创作设置</h2>
+            <p>确认歌词来源、是否纯音乐和流派方向，再进入当前创作入口。</p>
+          </div>
+          <button id="creationSettingsCloseButton" class="share-close" title="关闭">
+            <svg class="icon" viewBox="0 0 24 24"><path d="M18 6 6 18M6 6l12 12" /></svg>
+          </button>
+        </div>
+        <div class="creation-settings-body">
+          <section class="setting-group">
+            <div class="setting-group-title">歌词来源</div>
+            <div class="segmented" id="lyricsSourceOptions">
+              <button class="setting-option active" type="button" data-text-mode="lyrics">
+                <strong>有歌词</strong>
+                <span>输入内容会作为完整歌词，需填写标题和流派。</span>
+              </button>
+              <button class="setting-option" type="button" data-text-mode="description">
+                <strong>只有描述</strong>
+                <span>输入主题、情绪或画面，由 AI 自动生成歌词。</span>
+              </button>
+            </div>
+          </section>
+          <section class="setting-group">
+            <div class="setting-group-title">歌曲类型</div>
+            <div class="segmented" id="songTypeOptions">
+              <button class="setting-option active" type="button" data-instrumental="false">
+                <strong>带人声</strong>
+                <span>生成有人声演唱的完整歌曲。</span>
+              </button>
+              <button class="setting-option" type="button" data-instrumental="true">
+                <strong>纯音乐</strong>
+                <span>不生成歌词演唱，重点保留旋律、编曲和氛围。</span>
+              </button>
+            </div>
+            <p id="settingsRuleNote" class="settings-note"></p>
+          </section>
+          <section class="setting-group">
+            <div class="setting-group-title">流派方向</div>
+            <div id="settingsStyleOptions" class="settings-style-grid">
+              <button class="chip selected" type="button">流行 Pop</button>
+              <button class="chip" type="button">民谣 Folk</button>
+              <button class="chip" type="button">摇滚 Rock</button>
+              <button class="chip" type="button">嘻哈 HipHop</button>
+              <button class="chip" type="button">电子 Electronic</button>
+              <button class="chip" type="button">R&amp;B</button>
+            </div>
+            <input id="customStyleInput" class="custom-style-input" maxlength="120" placeholder="自定义流派或氛围，例如 City Pop, 中慢速, 温暖钢琴" />
+          </section>
+          <div id="creationSettingsMessage" class="generation-message" role="status" aria-live="polite"></div>
+          <div class="settings-footer">
+            <button id="creationSettingsCancelButton" class="secondary" type="button">取消</button>
+            <button id="creationSettingsConfirmButton" class="primary" type="button">开始做歌 <svg class="icon" viewBox="0 0 24 24"><path d="M13 2 9 10l-7 3 7 3 4 8 4-8 7-3-7-3z" /></svg></button>
+          </div>
+        </div>
+      </section>
+    </div>
+
     <div id="shareModal" class="modal-backdrop" role="dialog" aria-modal="true" aria-labelledby="shareModalTitle">
       <section class="share-modal">
         <div class="share-header">
@@ -1871,6 +2034,19 @@
       const counter = document.querySelector(".counter");
       const generateButtons = document.querySelectorAll(".generate-button");
       const textModeTabs = document.getElementById("textModeTabs");
+      const creationSettingsButton = document.getElementById("creationSettingsButton");
+      const creationSettingsSummary = document.getElementById("creationSettingsSummary");
+      const inlineSettingsSummary = document.getElementById("inlineSettingsSummary");
+      const creationSettingsModal = document.getElementById("creationSettingsModal");
+      const creationSettingsCloseButton = document.getElementById("creationSettingsCloseButton");
+      const creationSettingsCancelButton = document.getElementById("creationSettingsCancelButton");
+      const creationSettingsConfirmButton = document.getElementById("creationSettingsConfirmButton");
+      const creationSettingsMessage = document.getElementById("creationSettingsMessage");
+      const lyricsSourceOptions = document.getElementById("lyricsSourceOptions");
+      const songTypeOptions = document.getElementById("songTypeOptions");
+      const settingsStyleOptions = document.getElementById("settingsStyleOptions");
+      const customStyleInput = document.getElementById("customStyleInput");
+      const settingsRuleNote = document.getElementById("settingsRuleNote");
       const messageBox = document.getElementById("generationMessage");
       const statusEl = document.getElementById("generationStatus");
       const dateEl = document.getElementById("generationDate");
@@ -1949,7 +2125,14 @@
       let currentCreationId = creations[0]?.id || null;
       let currentVersionId = creations[0]?.versions.at(-1)?.id || null;
       let pendingMode = "new";
+      let pendingGenerationOptions = null;
       let textGenerationMode = "lyrics";
+      const creationSettings = {
+        textMode: "lyrics",
+        instrumental: false,
+        styles: ["流行 Pop"],
+        customStyle: ""
+      };
       const MIN_HUM_SECONDS = 12;
       let mediaRecorder = null;
       let recordingChunks = [];
@@ -2026,7 +2209,39 @@
         setTextGenerationMode(button.dataset.textMode);
       });
 
-      noInspirationButton.addEventListener("click", openNoInspirationModal);
+      creationSettingsButton.addEventListener("click", () => openCreationSettingsModal());
+      creationSettingsCloseButton.addEventListener("click", closeCreationSettingsModal);
+      creationSettingsCancelButton.addEventListener("click", closeCreationSettingsModal);
+      creationSettingsModal.addEventListener("click", (event) => {
+        if (event.target === creationSettingsModal) closeCreationSettingsModal();
+      });
+      lyricsSourceOptions.addEventListener("click", (event) => {
+        const button = event.target.closest("[data-text-mode]");
+        if (!button) return;
+        creationSettings.textMode = button.dataset.textMode === "description" ? "description" : "lyrics";
+        syncCreationSettingsUi();
+      });
+      songTypeOptions.addEventListener("click", (event) => {
+        const button = event.target.closest("[data-instrumental]");
+        if (!button) return;
+        creationSettings.instrumental = button.dataset.instrumental === "true";
+        if (creationSettings.instrumental && creationSettings.textMode === "lyrics") creationSettings.textMode = "description";
+        syncCreationSettingsUi();
+      });
+      settingsStyleOptions.addEventListener("click", (event) => {
+        const chip = event.target.closest(".chip");
+        if (!chip) return;
+        chip.classList.toggle("selected");
+        updateCreationSettingsFromUi();
+        syncCreationSettingsUi();
+      });
+      customStyleInput.addEventListener("input", () => {
+        creationSettings.customStyle = customStyleInput.value.trim();
+        syncCreationSettingsSummary();
+      });
+      creationSettingsConfirmButton.addEventListener("click", continueAfterCreationSettings);
+
+      noInspirationButton.addEventListener("click", () => showMessage("已切换到无灵感做歌。点击“生成 Demo”后先确认创作设置，再回答 3 个问题。"));
       noInspirationCloseButton.addEventListener("click", closeNoInspirationModal);
       noInspirationBackButton.addEventListener("click", () => {
         if (noInspirationStep > 0) {
@@ -2040,7 +2255,10 @@
       });
 
       document.querySelectorAll(".chip").forEach((chip) => {
-        chip.addEventListener("click", () => chip.classList.toggle("selected"));
+        chip.addEventListener("click", () => {
+          if (chip.closest("#settingsStyleOptions")) return;
+          chip.classList.toggle("selected");
+        });
       });
 
       document.querySelectorAll(".tool-button").forEach((button) => {
@@ -2247,14 +2465,102 @@
       }
 
       function selectedStyle() {
-        return [...document.querySelectorAll(".chip.selected")]
+        const selected = [...settingsStyleOptions.querySelectorAll(".chip.selected")]
           .map((chip) => chip.textContent.replace("更多⌄", "").trim())
           .filter(Boolean)
-          .join(", ") || "Pop";
+          .concat(creationSettings.customStyle ? [creationSettings.customStyle] : []);
+        return selected.join(", ") || "Pop";
+      }
+
+      function selectedStyleList() {
+        return selectedStyle().split(",").map((item) => item.trim()).filter(Boolean);
+      }
+
+      function updateCreationSettingsFromUi() {
+        creationSettings.textMode = textGenerationMode;
+        creationSettings.instrumental = document.getElementById("instrumentalSelect").value === "true";
+        creationSettings.styles = [...settingsStyleOptions.querySelectorAll(".chip.selected")]
+          .map((chip) => chip.textContent.trim())
+          .filter(Boolean);
+        creationSettings.customStyle = customStyleInput.value.trim();
+      }
+
+      function syncCreationSettingsSummary() {
+        const source = creationSettings.textMode === "description" ? "基于描述" : "基于歌词";
+        const songType = creationSettings.instrumental ? "纯音乐" : "带人声";
+        const style = selectedStyle();
+        const summary = `${source} · ${songType} · ${style}`;
+        creationSettingsSummary.textContent = summary;
+        inlineSettingsSummary.textContent = summary;
+      }
+
+      function syncCreationSettingsUi() {
+        if (creationSettings.instrumental && creationSettings.textMode === "lyrics") {
+          creationSettings.textMode = "description";
+        }
+        lyricsSourceOptions.querySelectorAll("[data-text-mode]").forEach((button) => {
+          const isActive = button.dataset.textMode === creationSettings.textMode;
+          button.classList.toggle("active", isActive);
+          button.disabled = creationSettings.instrumental && button.dataset.textMode === "lyrics";
+        });
+        songTypeOptions.querySelectorAll("[data-instrumental]").forEach((button) => {
+          button.classList.toggle("active", (button.dataset.instrumental === "true") === creationSettings.instrumental);
+        });
+        settingsStyleOptions.querySelectorAll(".chip").forEach((chip) => {
+          chip.classList.toggle("selected", creationSettings.styles.includes(chip.textContent.trim()));
+        });
+        customStyleInput.value = creationSettings.customStyle;
+        document.getElementById("instrumentalSelect").value = String(creationSettings.instrumental);
+        setTextGenerationMode(creationSettings.textMode);
+        settingsRuleNote.textContent = creationSettings.instrumental
+          ? "纯音乐模式会使用自定义模式：customMode=true、instrumental=true，并把描述合并到流派方向里。"
+          : (creationSettings.textMode === "description"
+            ? "描述模式会使用 customMode=false、instrumental=false，Suno 会自动生成歌词。"
+            : "歌词模式会使用 customMode=true、instrumental=false，输入内容会作为完整歌词。");
+        syncCreationSettingsSummary();
+      }
+
+      function showCreationSettingsMessage(message, isError = false) {
+        creationSettingsMessage.textContent = message || "";
+        creationSettingsMessage.classList.toggle("show", Boolean(message));
+        creationSettingsMessage.classList.toggle("error", Boolean(isError));
+      }
+
+      function openCreationSettingsModal(options = {}) {
+        pendingGenerationOptions = options;
+        updateCreationSettingsFromUi();
+        syncCreationSettingsUi();
+        showCreationSettingsMessage("");
+        creationSettingsModal.classList.add("show");
+      }
+
+      function closeCreationSettingsModal() {
+        creationSettingsModal.classList.remove("show");
+      }
+
+      async function continueAfterCreationSettings() {
+        updateCreationSettingsFromUi();
+        if (!selectedStyle()) {
+          showCreationSettingsMessage("请至少选择或输入一个流派方向。", true);
+          return;
+        }
+        syncCreationSettingsUi();
+        closeCreationSettingsModal();
+        const noInspirationMode = noInspirationButton.classList.contains("selected");
+        if (noInspirationMode) {
+          openNoInspirationModal();
+          return;
+        }
+        await generateMusic({ ...(pendingGenerationOptions || {}), skipSettings: true });
       }
 
       function setTextGenerationMode(mode) {
         textGenerationMode = mode === "description" ? "description" : "lyrics";
+        creationSettings.textMode = textGenerationMode;
+        if (creationSettings.instrumental && textGenerationMode === "lyrics") {
+          creationSettings.instrumental = false;
+          document.getElementById("instrumentalSelect").value = "false";
+        }
         textModeTabs.querySelectorAll("button").forEach((button) => {
           button.classList.toggle("active", button.dataset.textMode === textGenerationMode);
         });
@@ -2265,6 +2571,7 @@
         if (textarea.value.length > textarea.maxLength) textarea.value = textarea.value.slice(0, textarea.maxLength);
         counter.textContent = `${textarea.value.length}/${textarea.maxLength}`;
         document.getElementById("songTitle").placeholder = textGenerationMode === "description" ? "歌曲标题（描述模式可留空）" : "歌曲标题（歌词模式必填）";
+        syncCreationSettingsSummary();
       }
 
       function openNoInspirationModal() {
@@ -2354,7 +2661,8 @@
           document.getElementById("songTitle").value = prompt.theme || "无灵感 Demo";
           applyGeneratedStyles(prompt.music_style || []);
           closeNoInspirationModal();
-          showMessage("无灵感做歌描述已生成，可以直接点击“生成 Demo”。");
+          showMessage("无灵感做歌描述已生成，正在提交生成任务。");
+          await generateMusic({ skipSettings: true });
         } catch (error) {
           showNoInspirationMessage(error.message, true);
         } finally {
@@ -2365,7 +2673,7 @@
 
       function applyGeneratedStyles(styles) {
         const styleText = styles.join(" ").toLowerCase();
-        const chips = [...document.querySelectorAll(".chip")];
+        const chips = [...settingsStyleOptions.querySelectorAll(".chip")];
         chips.forEach((chip) => chip.classList.remove("selected"));
         const matched = chips.filter((chip) => {
           const label = chip.textContent.toLowerCase();
@@ -2377,6 +2685,8 @@
             || (styleText.includes("r&b") && label.includes("r&b"));
         });
         (matched.length ? matched : chips.slice(0, 1)).forEach((chip) => chip.classList.add("selected"));
+        updateCreationSettingsFromUi();
+        syncCreationSettingsUi();
       }
 
       function isHumMode() {
@@ -2618,10 +2928,15 @@
 
       function applyStyleChips(styleText) {
         const selected = String(styleText || "").split(",").map((item) => item.trim()).filter(Boolean);
-        document.querySelectorAll(".chip").forEach((chip) => {
+        const knownNames = [...settingsStyleOptions.querySelectorAll(".chip")].map((chip) => chip.textContent.trim());
+        settingsStyleOptions.querySelectorAll(".chip").forEach((chip) => {
           const name = chip.textContent.replace("更多⌄", "").trim();
           chip.classList.toggle("selected", selected.includes(name));
         });
+        const customStyles = selected.filter((item) => !knownNames.includes(item));
+        customStyleInput.value = customStyles.join(", ");
+        updateCreationSettingsFromUi();
+        syncCreationSettingsUi();
       }
 
       async function requestJson(url, options = {}) {
@@ -2704,6 +3019,10 @@
             body: JSON.stringify({
               prompt,
               generationType: "description",
+              customMode: creationSettings.instrumental,
+              instrumental: creationSettings.instrumental,
+              title,
+              style,
               model: "V5",
               callbackUrl: document.getElementById("callbackUrl").value.trim()
             })
@@ -2795,7 +3114,12 @@
         currentCreationId = null;
         currentVersionId = null;
         textarea.value = "";
+        creationSettings.textMode = "lyrics";
+        creationSettings.instrumental = false;
+        creationSettings.styles = ["流行 Pop"];
+        creationSettings.customStyle = "";
         setTextGenerationMode("lyrics");
+        syncCreationSettingsUi();
         counter.textContent = `0/${textarea.maxLength}`;
         document.getElementById("songTitle").value = "我的灵感 Demo";
         demoPanel.classList.add("is-empty");
@@ -2819,15 +3143,19 @@
         switchView("creation");
       }
 
-      async function generateMusic({ appendToCurrent = false } = {}) {
+      async function generateMusic({ appendToCurrent = false, skipSettings = false } = {}) {
+        if (!skipSettings) {
+          openCreationSettingsModal({ appendToCurrent });
+          return;
+        }
         switchView("creation");
         let rawPrompt = textarea.value.trim();
         const title = document.getElementById("songTitle").value.trim();
-        const instrumental = document.getElementById("instrumentalSelect").value === "true";
+        const instrumental = creationSettings.instrumental;
         const humMode = isHumMode();
         const imageMode = isImageMode();
         const speechMode = isSpeechMode();
-        let prompt = rawPrompt || (humMode ? `请基于上传的哼唱旋律生成一首${selectedStyle()}风格的完整器乐 Demo，保留主旋律走向，编配清晰、节奏稳定。` : "");
+        let prompt = rawPrompt || (humMode ? `请基于上传的哼唱旋律生成一首${selectedStyle()}风格的完整${instrumental ? "纯音乐" : "带人声"} Demo，保留主旋律走向，编配清晰、节奏稳定。` : "");
         if (humMode && mediaRecorder?.state === "recording") return showMessage("请先停止录音，再生成 Demo。", true);
         if (humMode && !hummedAudioBlob) return showMessage("请先点击“哼唱录音”录入一段旋律。", true);
         if (humMode && hummedDurationSeconds < MIN_HUM_SECONDS) return showMessage(`当前哼唱只有 ${hummedDurationSeconds} 秒，太短容易生成失败。请重新录制至少 ${MIN_HUM_SECONDS} 秒，推荐 15-30 秒。`, true);
@@ -2841,9 +3169,9 @@
         if (speechMode && !speechTranscript && !prompt) return showMessage("请先完成语音口述并等待转文字。", true);
         if (imageMode && !imageCaption && !prompt) return showMessage("请先上传图片并等待音乐描述生成完成。", true);
         if (!humMode && !prompt) return showMessage(textGenerationMode === "description" ? "请先输入歌曲描述。" : "请先输入完整歌词。", true);
-        if (!humMode && textGenerationMode === "description" && prompt.length > 500) return showMessage("歌曲描述最多支持 500 个字符。", true);
-        if ((humMode || textGenerationMode === "lyrics") && !title) return showMessage("请填写歌曲标题。", true);
-        if (!humMode && textGenerationMode === "lyrics" && !selectedStyle()) return showMessage("请选择或输入歌曲风格。", true);
+        if (!humMode && textGenerationMode === "description" && !instrumental && prompt.length > 500) return showMessage("歌曲描述最多支持 500 个字符。", true);
+        if ((humMode || instrumental || textGenerationMode === "lyrics") && !title) return showMessage("请填写歌曲标题。", true);
+        if ((humMode || instrumental || textGenerationMode === "lyrics") && !selectedStyle()) return showMessage("请选择或输入歌曲风格。", true);
 
         clearInterval(pollingTimer);
         pendingMode = appendToCurrent && currentCreationId ? "append" : "new";
@@ -2858,6 +3186,10 @@
             durationSeconds: hummedDurationSeconds,
             title,
             tags: selectedStyle(),
+            prompt,
+            generationType: textGenerationMode,
+            customMode: true,
+            instrumental,
             negativeTags: "重金属, 激进鼓点, 噪音, 失真, 跑调人声, 低清录音",
             model: document.getElementById("modelSelect").value === "V4_5ALL" || document.getElementById("modelSelect").value === "V4_5" || document.getElementById("modelSelect").value === "V4"
               ? "V4_5PLUS"
@@ -2866,10 +3198,12 @@
           } : {
             prompt,
             generationType: textGenerationMode,
+            customMode: textGenerationMode === "lyrics" || instrumental,
             instrumental,
             model: "V5",
             callbackUrl: document.getElementById("callbackUrl").value.trim(),
-            ...(textGenerationMode === "lyrics" ? { title, style: selectedStyle() } : {})
+            title,
+            style: selectedStyle()
           };
           const result = await requestJson(humMode ? "/api/suno/upload-cover" : "/api/suno/generate", {
             method: "POST",
@@ -2932,6 +3266,7 @@
             prompt,
             style,
             generationType: textGenerationMode,
+            instrumental,
             createdAt: new Date().toISOString(),
             updatedAt: new Date().toISOString(),
             versions: []
@@ -2943,6 +3278,7 @@
         creation.prompt = prompt;
         creation.style = style;
         creation.generationType = textGenerationMode;
+        creation.instrumental = instrumental;
         creation.updatedAt = new Date().toISOString();
 
         const newTracks = usableTracks.filter((track) => !creation.versions.some((version) => version.id === track.id));
@@ -2961,6 +3297,7 @@
             prompt: track.prompt || prompt,
             tags: track.tags || style,
             generationType: textGenerationMode,
+            instrumental,
             audioUrl: track.audioUrl || track.streamAudioUrl,
             streamAudioUrl: track.streamAudioUrl || track.audioUrl,
             imageUrl: track.imageUrl || "",
@@ -3014,6 +3351,8 @@
         textarea.value = creation.prompt || version.prompt || "";
         counter.textContent = `${textarea.value.length}/${textarea.maxLength}`;
         applyStyleChips(creation.style || version.tags);
+        creationSettings.instrumental = Boolean(creation.instrumental || version.instrumental);
+        syncCreationSettingsUi();
         renderTrack(version);
         renderVersions(creation);
       }
@@ -3231,13 +3570,14 @@
       adjustModal.addEventListener("click", (event) => {
         if (event.target === adjustModal) closeAdjustModal();
       });
-      newVersionButton.addEventListener("click", () => generateMusic({ appendToCurrent: true }));
+      newVersionButton.addEventListener("click", () => openCreationSettingsModal({ appendToCurrent: true }));
       allVersionsLink.addEventListener("click", (event) => {
         event.preventDefault();
         switchView("history");
       });
-      generateButtons.forEach((button) => button.addEventListener("click", () => generateMusic()));
+      generateButtons.forEach((button) => button.addEventListener("click", () => openCreationSettingsModal()));
 
+      syncCreationSettingsUi();
       if (creations.length) {
         renderCreation(creations[0]);
       } else {
