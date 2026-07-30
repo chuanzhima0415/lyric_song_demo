@@ -12,6 +12,7 @@ const uploadsDir = path.join(__dirname, "uploads");
 const dataDir = path.join(__dirname, "data");
 const sharesFile = path.join(dataDir, "shares.json");
 const shareImageDir = path.join(__dirname, "分享图打包");
+const avatarImageDir = path.join(__dirname, "头像打包");
 const DASHSCOPE_MULTIMODAL_URL = "https://dashscope.aliyuncs.com/api/v1/services/aigc/multimodal-generation/generation";
 const DASHSCOPE_ASR_URL = "https://dashscope.aliyuncs.com/api/v1/services/audio/asr/transcription";
 const DASHSCOPE_TASK_URL = "https://dashscope.aliyuncs.com/api/v1/tasks";
@@ -264,6 +265,21 @@ function shuffledShareImages(count, baseUrl) {
     [files[index], files[target]] = [files[target], files[index]];
   }
   return files.slice(0, count).map((file) => `${baseUrl}/${encodeURIComponent("分享图打包")}/${encodeURIComponent(file)}`);
+}
+
+function shuffledAvatarImages(count, baseUrl) {
+  let files = [];
+  try {
+    files = fs.readdirSync(avatarImageDir)
+      .filter((file) => /\.(png|jpe?g|webp)$/i.test(file));
+  } catch {
+    files = [];
+  }
+  for (let index = files.length - 1; index > 0; index -= 1) {
+    const target = Math.floor(Math.random() * (index + 1));
+    [files[index], files[target]] = [files[target], files[index]];
+  }
+  return files.slice(0, count).map((file) => `${baseUrl}/${encodeURIComponent("头像打包")}/${encodeURIComponent(file)}`);
 }
 
 function makeSharePage(share, shareUrl) {
@@ -1435,11 +1451,13 @@ app.post("/api/shares", async (req, res, next) => {
       { name: "分享卡片", inspiration: displayInspiration }
     ];
     const fallbackImages = heroImageUrl ? [] : shuffledShareImages(variants.length, baseUrl);
+    const fallbackAvatars = shuffledAvatarImages(variants.length, baseUrl);
 
     const candidates = variants.map((variant, index) => {
       let token = randomToken();
       while (shares[token]) token = randomToken();
       const selectedHeroImageUrl = heroImageUrl || fallbackImages[index] || "";
+      const selectedAvatarUrl = fallbackAvatars[index] || "";
       const selectedRecommendation = analysis.recommendations?.[index] || analysis.recommendation;
       const shareAnalysis = {
         ...analysis,
@@ -1461,6 +1479,7 @@ app.post("/api/shares", async (req, res, next) => {
         source: source || "文字＋哼唱灵感",
         creatorName,
         creatorRole,
+        creatorAvatarUrl: selectedAvatarUrl,
         audioUrl,
         styleTags: normalizedStyleTags,
         versionLabel,
@@ -1480,6 +1499,7 @@ app.post("/api/shares", async (req, res, next) => {
           styleTags: share.styleTags,
           versionLabel: share.versionLabel,
           heroImageUrl: share.heroImageUrl,
+          creatorAvatarUrl: share.creatorAvatarUrl,
           recommendation: share.analysis?.recommendation
         }
       };

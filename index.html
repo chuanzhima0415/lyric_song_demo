@@ -186,6 +186,8 @@
         background:
           radial-gradient(circle at 40% 32%, #f1c8ad 0 14%, transparent 15%),
           linear-gradient(135deg, #9be8dc, #1a243c 60%);
+        background-position: center;
+        background-size: cover;
         border: 2px solid rgba(255, 255, 255, 0.22);
       }
 
@@ -200,6 +202,46 @@
         display: flex;
         justify-content: space-between;
         padding-top: 26px;
+      }
+
+      .profile-modal {
+        width: min(520px, 100%);
+        background: #fff;
+        border-radius: 16px;
+        box-shadow: 0 32px 80px rgba(17, 19, 34, .28);
+      }
+
+      .profile-editor-body {
+        display: grid;
+        gap: 18px;
+        padding: 24px 26px 28px;
+      }
+
+      .profile-avatar-options {
+        display: flex;
+        flex-wrap: wrap;
+        gap: 10px;
+      }
+
+      .profile-avatar-option {
+        width: 58px;
+        height: 58px;
+        overflow: hidden;
+        background: #f3f4f8;
+        border: 2px solid transparent;
+        border-radius: 50%;
+        cursor: pointer;
+      }
+
+      .profile-avatar-option.selected {
+        border-color: var(--purple);
+        box-shadow: 0 0 0 4px rgba(112,72,255,.12);
+      }
+
+      .profile-avatar-option img {
+        width: 100%;
+        height: 100%;
+        object-fit: cover;
       }
 
       .settings button {
@@ -1490,12 +1532,23 @@
       .share-card-title {
         margin: 0 0 8px;
         display: inline-flex;
+        align-items: center;
+        gap: 8px;
         padding: 6px 10px;
         color: #7048ff;
         background: #f3eeff;
         border-radius: 999px;
         font-size: 15px;
         font-weight: 760;
+      }
+      .share-card-avatar {
+        width: 28px;
+        height: 28px;
+        flex: 0 0 auto;
+        object-fit: cover;
+        background: #fff;
+        border: 2px solid #fff;
+        border-radius: 50%;
       }
       .share-card-text {
         display: -webkit-box;
@@ -1833,13 +1886,13 @@
         <div class="sidebar-bottom">
           <div class="membership">
             <strong>Pro 会员</strong>
-            <span>有效期至 2025-08-20</span>
+            <span>有效期至 2026-08-30</span>
           </div>
-          <button class="profile" title="账户">
-            <div class="avatar"></div>
+          <button id="profileButton" class="profile" title="账户">
+            <div id="profileAvatar" class="avatar"></div>
             <div>
-              <strong>Echo</strong>
-              <span>独立音乐人</span>
+              <strong id="profileName">Echo</strong>
+              <span id="profileRole">独立音乐人</span>
             </div>
             <svg class="icon" viewBox="0 0 24 24" aria-hidden="true"><path d="m6 9 6 6 6-6" /></svg>
           </button>
@@ -2046,6 +2099,30 @@
       </main>
     </div>
 
+    <div id="profileModal" class="modal-backdrop" role="dialog" aria-modal="true" aria-labelledby="profileModalTitle">
+      <section class="profile-modal">
+        <div class="share-header">
+          <div>
+            <h2 id="profileModalTitle">个人信息</h2>
+            <p>修改创作者昵称和头像，会用于分享信息。</p>
+          </div>
+          <button id="profileCloseButton" class="share-close" title="关闭">
+            <svg class="icon" viewBox="0 0 24 24"><path d="M18 6 6 18M6 6l12 12" /></svg>
+          </button>
+        </div>
+        <div class="profile-editor-body share-config">
+          <label class="wide">昵称
+            <input id="profileNameInput" maxlength="40" />
+          </label>
+          <div class="wide">
+            <div class="setting-group-title">头像</div>
+            <div id="profileAvatarOptions" class="profile-avatar-options"></div>
+          </div>
+          <button id="profileSaveButton" class="primary wide" type="button">保存资料</button>
+        </div>
+      </section>
+    </div>
+
     <div id="creationSettingsModal" class="modal-backdrop" role="dialog" aria-modal="true" aria-labelledby="creationSettingsTitle">
       <section class="creation-settings-modal">
         <div class="share-header">
@@ -2182,6 +2259,16 @@
 
     <script>
       const STORAGE_KEY = "melodyflow.creations.v1";
+      const PROFILE_KEY = "melodyflow.profile.v1";
+      const PROFILE_AVATARS = [
+        "头像打包/微信图片_20260730123101_991_167.jpg",
+        "头像打包/微信图片_20260730123323_994_167.jpg",
+        "头像打包/微信图片_20260730123322_993_167.jpg",
+        "头像打包/微信图片_20260730123321_992_167.jpg",
+        "头像打包/微信图片_20260730123100_990_167.jpg",
+        "头像打包/微信图片_20260730123059_989_167.jpg",
+        "头像打包/微信图片_20260730123347_995_167.jpg"
+      ];
       const textarea = document.querySelector("textarea");
       const counter = document.querySelector(".counter");
       const generateButtons = document.querySelectorAll(".generate-button");
@@ -2240,6 +2327,14 @@
       const myCreationsNav = document.getElementById("myCreationsNav");
       const createFromHistoryButton = document.getElementById("createFromHistoryButton");
       const newVersionButton = document.getElementById("newVersionButton");
+      const profileButton = document.getElementById("profileButton");
+      const profileAvatar = document.getElementById("profileAvatar");
+      const profileName = document.getElementById("profileName");
+      const profileModal = document.getElementById("profileModal");
+      const profileCloseButton = document.getElementById("profileCloseButton");
+      const profileNameInput = document.getElementById("profileNameInput");
+      const profileAvatarOptions = document.getElementById("profileAvatarOptions");
+      const profileSaveButton = document.getElementById("profileSaveButton");
       const textInputButton = document.getElementById("textInputButton");
       const imageUploadButton = document.getElementById("imageUploadButton");
       const imageInput = document.getElementById("imageInput");
@@ -2311,6 +2406,7 @@
       let speechDurationSeconds = 0;
       let speechStartedAt = 0;
       let speechTranscript = "";
+      let profile = loadProfile();
       const noInspirationQuestions = [
         {
           key: "environment",
@@ -2437,6 +2533,16 @@
         if (file) await handleImageUpload(file);
       });
       clearImageButton.addEventListener("click", clearImageAttachment);
+      profileButton.addEventListener("click", openProfileModal);
+      profileCloseButton.addEventListener("click", closeProfileModal);
+      profileSaveButton.addEventListener("click", saveProfileFromModal);
+      profileModal.addEventListener("click", (event) => {
+        if (event.target === profileModal) closeProfileModal();
+        const avatarButton = event.target.closest("[data-avatar]");
+        if (!avatarButton) return;
+        profile.avatarUrl = avatarButton.dataset.avatar;
+        renderProfileAvatarOptions();
+      });
       speechRecordButton.addEventListener("click", () => {
         if (speechRecorder?.state === "recording") {
           stopSpeechRecording();
@@ -2466,6 +2572,53 @@
 
       function saveCreations() {
         localStorage.setItem(STORAGE_KEY, JSON.stringify(creations));
+      }
+
+      function loadProfile() {
+        try {
+          return { name: "Echo", avatarUrl: PROFILE_AVATARS[0], ...JSON.parse(localStorage.getItem(PROFILE_KEY) || "{}") };
+        } catch {
+          return { name: "Echo", avatarUrl: PROFILE_AVATARS[0] };
+        }
+      }
+
+      function saveProfile() {
+        localStorage.setItem(PROFILE_KEY, JSON.stringify(profile));
+      }
+
+      function renderProfile() {
+        profileName.textContent = profile.name || "Echo";
+        profileAvatar.style.backgroundImage = profile.avatarUrl ? `url("${profile.avatarUrl.replaceAll('"', "%22")}")` : "";
+        shareCreatorName.value = profile.name || "Echo";
+      }
+
+      function openProfileModal() {
+        profileNameInput.value = profile.name || "Echo";
+        renderProfileAvatarOptions();
+        profileModal.classList.add("show");
+        profileNameInput.focus();
+      }
+
+      function closeProfileModal() {
+        profileModal.classList.remove("show");
+      }
+
+      function renderProfileAvatarOptions() {
+        profileAvatarOptions.innerHTML = PROFILE_AVATARS.map((avatarUrl) => `
+          <button class="profile-avatar-option ${avatarUrl === profile.avatarUrl ? "selected" : ""}" type="button" data-avatar="${escapeHtml(avatarUrl)}">
+            <img src="${escapeHtml(avatarUrl)}" alt="" />
+          </button>
+        `).join("");
+      }
+
+      function saveProfileFromModal() {
+        const name = profileNameInput.value.trim();
+        if (!name) return showMessage("昵称不能为空。", true);
+        profile.name = name;
+        saveProfile();
+        renderProfile();
+        closeProfileModal();
+        showMessage("个人信息已更新。");
       }
 
       function uid(prefix) {
@@ -3195,6 +3348,7 @@
           showMessage("请先生成一个可播放的 Demo，再创建分享链接。", true);
           return;
         }
+        shareCreatorName.value = profile.name || "Echo";
         shareInspiration.value = creation.prompt || version.prompt || "来自一段文字、图片和哼唱灵感";
         shareCandidates.innerHTML = '<div class="share-empty">正在生成三个候选分享链接…</div>';
         shareModal.classList.add("show");
@@ -3308,7 +3462,7 @@
           <article class="share-card">
             <div class="share-card-hero"${candidate.preview?.heroImageUrl ? ` style="background-image:url('${String(candidate.preview.heroImageUrl).replaceAll("'", "%27")}')"` : ""}>${candidate.preview?.heroImageUrl ? "" : "顶部图片留空"}</div>
             <div class="share-card-body">
-              <h3 class="share-card-title">${escapeHtml(candidate.preview?.recommendation || candidate.template || "推荐语")}</h3>
+              <h3 class="share-card-title">${candidate.preview?.creatorAvatarUrl ? `<img class="share-card-avatar" src="${escapeHtml(candidate.preview.creatorAvatarUrl)}" alt="" />` : ""}${escapeHtml(candidate.preview?.recommendation || candidate.template || "推荐语")}</h3>
               <p class="share-card-text">${escapeHtml(normalizeSharePreviewText(candidate.preview?.inspiration || "打开链接即可试听"))}</p>
               <div class="share-actions">
                 <button class="copy-share" data-url="${escapeHtml(candidate.url)}">复制链接</button>
@@ -3814,6 +3968,7 @@
       generateButtons.forEach((button) => button.addEventListener("click", () => openCreationSettingsModal()));
 
       syncCreationSettingsUi();
+      renderProfile();
       if (creations.length) {
         renderCreation(creations[0]);
       } else {
