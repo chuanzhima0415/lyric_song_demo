@@ -1207,6 +1207,221 @@
         grid-template-columns: repeat(auto-fill, minmax(260px, 1fr));
         gap: 18px;
       }
+      .nav-feedback-badge {
+        display: none;
+        min-width: 24px;
+        height: 24px;
+        margin-left: auto;
+        padding: 0 7px;
+        place-items: center;
+        color: #fff;
+        background: #ef476f;
+        border-radius: 999px;
+        font-size: 12px;
+        font-weight: 800;
+      }
+      .nav-feedback-badge.show {
+        display: grid;
+      }
+      .feedback-inbox-panel {
+        padding: 26px 30px 30px;
+      }
+      .feedback-summary {
+        display: grid;
+        grid-template-columns: repeat(3, minmax(0, 1fr));
+        gap: 14px;
+        margin: 24px 0;
+      }
+      .feedback-stat {
+        padding: 18px 20px;
+        background: #f8f6ff;
+        border: 1px solid #e3dcff;
+        border-radius: 10px;
+      }
+      .feedback-stat strong,
+      .feedback-stat span {
+        display: block;
+      }
+      .feedback-stat strong {
+        color: #2e3142;
+        font-size: 26px;
+      }
+      .feedback-stat span {
+        margin-top: 4px;
+        color: #70768a;
+        font-size: 14px;
+      }
+      .feedback-toolbar {
+        display: flex;
+        align-items: center;
+        justify-content: space-between;
+        gap: 16px;
+        margin-bottom: 18px;
+      }
+      .feedback-filters {
+        display: flex;
+        gap: 8px;
+      }
+      .feedback-filter {
+        min-height: 38px;
+        padding: 0 14px;
+        color: #666d80;
+        background: #fff;
+        border: 1px solid var(--line);
+        border-radius: 8px;
+        cursor: pointer;
+        font-weight: 720;
+      }
+      .feedback-filter.active {
+        color: var(--purple);
+        background: #f5f1ff;
+        border-color: #ad94ff;
+      }
+      .mark-all-read {
+        min-height: 38px;
+        padding: 0 14px;
+        color: var(--purple);
+        background: #fff;
+        border: 1px solid #b8a5ff;
+        border-radius: 8px;
+        cursor: pointer;
+        font-weight: 720;
+      }
+      .mark-all-read:disabled {
+        cursor: default;
+        opacity: .45;
+      }
+      .feedback-inbox-list {
+        display: grid;
+        gap: 18px;
+      }
+      .feedback-group {
+        overflow: hidden;
+        background: #fff;
+        border: 1px solid var(--line);
+        border-radius: 10px;
+        box-shadow: 0 12px 28px rgba(29, 22, 59, .05);
+      }
+      .feedback-group-head {
+        display: grid;
+        grid-template-columns: 64px minmax(0, 1fr) auto;
+        gap: 14px;
+        align-items: center;
+        padding: 16px 18px;
+        background: #fbfaff;
+        border-bottom: 1px solid #ece8f7;
+      }
+      .feedback-group-cover {
+        width: 64px;
+        aspect-ratio: 1;
+        background: linear-gradient(160deg, #413b8f, #ffb45a 70%, #534166);
+        background-position: center;
+        background-size: cover;
+        border-radius: 8px;
+      }
+      .feedback-group-title {
+        min-width: 0;
+      }
+      .feedback-group-title strong {
+        display: block;
+        overflow: hidden;
+        color: #2d3040;
+        font-size: 17px;
+        text-overflow: ellipsis;
+        white-space: nowrap;
+      }
+      .feedback-group-title span {
+        display: block;
+        margin-top: 6px;
+        color: #747a8d;
+        font-size: 13px;
+      }
+      .feedback-group-link {
+        color: var(--purple);
+        text-decoration: none;
+        font-size: 14px;
+        font-weight: 760;
+      }
+      .feedback-items {
+        display: grid;
+      }
+      .feedback-item {
+        display: grid;
+        grid-template-columns: 12px 90px minmax(0, 1fr) auto;
+        gap: 14px;
+        align-items: start;
+        padding: 18px;
+        border-bottom: 1px solid #f0eef5;
+      }
+      .feedback-item:last-child {
+        border-bottom: 0;
+      }
+      .feedback-unread-dot {
+        width: 9px;
+        height: 9px;
+        margin-top: 8px;
+        background: transparent;
+        border-radius: 50%;
+      }
+      .feedback-item.unread .feedback-unread-dot {
+        background: #7048ff;
+        box-shadow: 0 0 0 4px #eee9ff;
+      }
+      .feedback-timecode {
+        color: #7048ff;
+        font-weight: 820;
+      }
+      .feedback-copy {
+        min-width: 0;
+      }
+      .feedback-copy-head {
+        display: flex;
+        flex-wrap: wrap;
+        align-items: center;
+        gap: 8px;
+        margin-bottom: 7px;
+      }
+      .feedback-copy-head strong {
+        color: #2f3344;
+      }
+      .feedback-category {
+        padding: 3px 8px;
+        color: #7048ff;
+        background: #f2edff;
+        border-radius: 6px;
+        font-size: 12px;
+        font-weight: 760;
+      }
+      .feedback-reviewer,
+      .feedback-created-at {
+        color: #858a9a;
+        font-size: 13px;
+      }
+      .feedback-copy p {
+        margin: 0;
+        color: #5f6577;
+        line-height: 1.65;
+        white-space: pre-wrap;
+      }
+      .feedback-item-actions {
+        display: flex;
+        gap: 8px;
+      }
+      .feedback-item-actions button {
+        min-height: 34px;
+        padding: 0 10px;
+        color: #646b7d;
+        background: #fff;
+        border: 1px solid #dde0e9;
+        border-radius: 7px;
+        cursor: pointer;
+      }
+      .feedback-item-actions .delete {
+        color: #b42318;
+      }
+      .feedback-loading {
+        min-height: 260px;
+      }
       .history-card {
         display: grid;
         grid-template-columns: 82px minmax(0, 1fr);
@@ -1920,6 +2135,35 @@
           flex-direction: column;
         }
 
+        .feedback-summary {
+          grid-template-columns: 1fr;
+        }
+
+        .feedback-toolbar,
+        .feedback-group-head {
+          align-items: stretch;
+        }
+
+        .feedback-group-head {
+          grid-template-columns: 56px minmax(0, 1fr);
+        }
+
+        .feedback-group-cover {
+          width: 56px;
+        }
+
+        .feedback-group-link {
+          grid-column: 1 / -1;
+        }
+
+        .feedback-item {
+          grid-template-columns: 10px 72px minmax(0, 1fr);
+        }
+
+        .feedback-item-actions {
+          grid-column: 2 / -1;
+        }
+
         .inspiration-actions button {
           flex: 1;
         }
@@ -1948,9 +2192,10 @@
             <svg class="icon" viewBox="0 0 24 24" aria-hidden="true"><path d="M20 6 9 17l-5-5" /><path d="M3 5h18v16H3z" /></svg>
             <span>我的创作</span>
           </button>
-          <button title="收到的反馈">
+          <button id="feedbackInboxNav" title="收到的反馈">
             <svg class="icon" viewBox="0 0 24 24" aria-hidden="true"><path d="M21 15a4 4 0 0 1-4 4H7l-4 4V7a4 4 0 0 1 4-4h10a4 4 0 0 1 4 4z" /><path d="M8 10h8M8 14h5" /></svg>
             <span>收到的反馈</span>
+            <span id="feedbackNavBadge" class="nav-feedback-badge" aria-label="未读反馈"></span>
           </button>
         </nav>
 
@@ -2166,6 +2411,30 @@
             <button id="createFromHistoryButton" class="primary">新建创作 <svg class="icon" viewBox="0 0 24 24"><path d="M12 5v14M5 12h14" /></svg></button>
           </div>
           <div id="historyGrid" class="history-grid"></div>
+        </section>
+
+        <section id="feedbackInboxView" class="panel feedback-inbox-panel view" hidden aria-label="收到的反馈">
+          <div class="panel-head">
+            <div>
+              <h2 class="section-title" style="margin:0">收到的反馈</h2>
+              <p class="subtitle">集中查看其他人从分享页提交的逐段建议</p>
+            </div>
+            <button id="markAllFeedbackRead" class="mark-all-read" type="button">全部标为已读</button>
+          </div>
+          <div class="feedback-summary" aria-label="反馈概览">
+            <div class="feedback-stat"><strong id="feedbackTotalCount">0</strong><span>全部反馈</span></div>
+            <div class="feedback-stat"><strong id="feedbackUnreadCount">0</strong><span>未读反馈</span></div>
+            <div class="feedback-stat"><strong id="feedbackShareCount">0</strong><span>有反馈的分享</span></div>
+          </div>
+          <div class="feedback-toolbar">
+            <div class="feedback-filters" aria-label="反馈筛选">
+              <button class="feedback-filter active" type="button" data-feedback-filter="all">全部</button>
+              <button class="feedback-filter" type="button" data-feedback-filter="unread">只看未读</button>
+            </div>
+          </div>
+          <div id="feedbackInboxList" class="feedback-inbox-list">
+            <div class="empty-state feedback-loading"><div><strong>正在读取反馈</strong><span>请稍候</span></div></div>
+          </div>
         </section>
       </main>
     </div>
@@ -2404,6 +2673,15 @@
       const historyGrid = document.getElementById("historyGrid");
       const newCreationNav = document.getElementById("newCreationNav");
       const myCreationsNav = document.getElementById("myCreationsNav");
+      const feedbackInboxNav = document.getElementById("feedbackInboxNav");
+      const feedbackNavBadge = document.getElementById("feedbackNavBadge");
+      const feedbackInboxView = document.getElementById("feedbackInboxView");
+      const feedbackInboxList = document.getElementById("feedbackInboxList");
+      const feedbackTotalCount = document.getElementById("feedbackTotalCount");
+      const feedbackUnreadCount = document.getElementById("feedbackUnreadCount");
+      const feedbackShareCount = document.getElementById("feedbackShareCount");
+      const markAllFeedbackRead = document.getElementById("markAllFeedbackRead");
+      const feedbackFilters = [...document.querySelectorAll("[data-feedback-filter]")];
       const createFromHistoryButton = document.getElementById("createFromHistoryButton");
       const newVersionButton = document.getElementById("newVersionButton");
       const profileButton = document.getElementById("profileButton");
@@ -2460,6 +2738,8 @@
       let pendingSettingsAction = "generate";
       let pendingFeature = "";
       let textGenerationMode = "lyrics";
+      let feedbackInboxData = { summary: { total: 0, unread: 0, shares: 0 }, groups: [] };
+      let feedbackInboxFilter = "all";
       const creationSettings = {
         textMode: "lyrics",
         instrumental: false,
@@ -3640,16 +3920,138 @@
         return cleaned.length > 72 ? `${cleaned.slice(0, 72)}...` : cleaned;
       }
 
+      function formatFeedbackTimecode(seconds) {
+        const value = Math.max(0, Math.floor(Number(seconds) || 0));
+        return `${Math.floor(value / 60)}:${String(value % 60).padStart(2, "0")}`;
+      }
+
+      function formatFeedbackDate(value) {
+        const date = new Date(value);
+        if (Number.isNaN(date.getTime())) return "刚刚";
+        return new Intl.DateTimeFormat("zh-CN", {
+          month: "2-digit",
+          day: "2-digit",
+          hour: "2-digit",
+          minute: "2-digit",
+          hour12: false
+        }).format(date);
+      }
+
+      function updateFeedbackSummary() {
+        const summary = feedbackInboxData.summary || {};
+        const unread = Number(summary.unread) || 0;
+        feedbackTotalCount.textContent = String(Number(summary.total) || 0);
+        feedbackUnreadCount.textContent = String(unread);
+        feedbackShareCount.textContent = String(Number(summary.shares) || 0);
+        feedbackNavBadge.textContent = unread > 99 ? "99+" : String(unread);
+        feedbackNavBadge.classList.toggle("show", unread > 0);
+        markAllFeedbackRead.disabled = unread === 0;
+      }
+
+      function renderFeedbackInbox() {
+        updateFeedbackSummary();
+        const groups = (feedbackInboxData.groups || []).map((group) => ({
+          ...group,
+          feedbacks: (group.feedbacks || []).filter((feedback) => (
+            feedbackInboxFilter === "all" || !feedback.readAt
+          ))
+        })).filter((group) => group.feedbacks.length);
+        feedbackFilters.forEach((button) => {
+          button.classList.toggle("active", button.dataset.feedbackFilter === feedbackInboxFilter);
+        });
+        if (!groups.length) {
+          const isUnread = feedbackInboxFilter === "unread";
+          feedbackInboxList.innerHTML = `<div class="empty-state"><div><strong>${isUnread ? "没有未读反馈" : "还没有收到反馈"}</strong><span>${isUnread ? "新的反馈会显示在这里" : "分享作品后，其他人提交的意见会自动汇总到这里"}</span></div></div>`;
+          return;
+        }
+        feedbackInboxList.innerHTML = groups.map((group) => {
+          const coverStyle = group.heroImageUrl
+            ? ` style="background-image:url('${String(group.heroImageUrl).replaceAll("'", "%27")}')"`
+            : "";
+          return `
+            <article class="feedback-group">
+              <header class="feedback-group-head">
+                <span class="feedback-group-cover"${coverStyle}></span>
+                <div class="feedback-group-title">
+                  <strong>${escapeHtml(group.title)} · ${escapeHtml(group.versionLabel)}</strong>
+                  <span>${group.feedbacks.length} 条反馈${group.isActive ? "" : " · 分享已关闭"}</span>
+                </div>
+                <a class="feedback-group-link" href="${escapeHtml(group.feedbackUrl)}" target="_blank" rel="noopener">打开反馈页</a>
+              </header>
+              <div class="feedback-items">
+                ${group.feedbacks.map((feedback) => `
+                  <article class="feedback-item${feedback.readAt ? "" : " unread"}">
+                    <span class="feedback-unread-dot" aria-hidden="true"></span>
+                    <button class="feedback-timecode feedback-filter" type="button" data-open-feedback="${escapeHtml(group.feedbackUrl)}" title="打开对应反馈页">${formatFeedbackTimecode(feedback.timeSeconds)}</button>
+                    <div class="feedback-copy">
+                      <div class="feedback-copy-head">
+                        <strong>${escapeHtml(feedback.title)}</strong>
+                        <span class="feedback-category">${escapeHtml(feedback.category)}</span>
+                        <span class="feedback-reviewer">${escapeHtml(feedback.reviewerName || "匿名听众")}</span>
+                        <span class="feedback-created-at">${formatFeedbackDate(feedback.createdAt)}</span>
+                      </div>
+                      <p>${escapeHtml(feedback.text)}</p>
+                    </div>
+                    <div class="feedback-item-actions">
+                      <button type="button" data-feedback-read="${feedback.readAt ? "false" : "true"}" data-token="${escapeHtml(group.token)}" data-comment-id="${escapeHtml(feedback.id)}">${feedback.readAt ? "标为未读" : "标为已读"}</button>
+                      <button class="delete" type="button" data-feedback-delete data-token="${escapeHtml(group.token)}" data-comment-id="${escapeHtml(feedback.id)}">删除</button>
+                    </div>
+                  </article>
+                `).join("")}
+              </div>
+            </article>
+          `;
+        }).join("");
+      }
+
+      async function loadFeedbackInbox({ showLoading = true } = {}) {
+        if (showLoading) {
+          feedbackInboxList.innerHTML = '<div class="empty-state feedback-loading"><div><strong>正在读取反馈</strong><span>请稍候</span></div></div>';
+        }
+        try {
+          feedbackInboxData = await requestJson("/api/feedback");
+          renderFeedbackInbox();
+        } catch (error) {
+          feedbackInboxList.innerHTML = `<div class="empty-state"><div><strong>反馈读取失败</strong><span>${escapeHtml(error.message)}</span></div></div>`;
+        }
+      }
+
+      async function setFeedbackRead(token, commentId, read) {
+        await requestJson(`/api/feedback/${encodeURIComponent(token)}/${encodeURIComponent(commentId)}`, {
+          method: "PATCH",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ read })
+        });
+        await loadFeedbackInbox({ showLoading: false });
+      }
+
+      async function deleteFeedback(token, commentId) {
+        if (!window.confirm("确定删除这条反馈吗？删除后无法恢复。")) return;
+        await requestJson(`/api/feedback/${encodeURIComponent(token)}/${encodeURIComponent(commentId)}`, {
+          method: "DELETE"
+        });
+        await loadFeedbackInbox({ showLoading: false });
+      }
+
       function switchView(view) {
         const isHistory = view === "history";
-        creationInputView.hidden = isHistory;
-        creationResultView.hidden = isHistory;
+        const isFeedback = view === "feedback";
+        const isCreation = !isHistory && !isFeedback;
+        creationInputView.hidden = !isCreation;
+        creationResultView.hidden = !isCreation;
         historyView.hidden = !isHistory;
-        newCreationNav.classList.toggle("active", !isHistory);
+        feedbackInboxView.hidden = !isFeedback;
+        newCreationNav.classList.toggle("active", isCreation);
         myCreationsNav.classList.toggle("active", isHistory);
-        pageTitle.textContent = isHistory ? "我的创作" : "新建创作";
-        pageSubtitle.textContent = isHistory ? "查看已生成的作品，继续管理版本" : "记录灵感，AI 帮你把想法变成动听的 Demo";
+        feedbackInboxNav.classList.toggle("active", isFeedback);
+        pageTitle.textContent = isHistory ? "我的创作" : isFeedback ? "收到的反馈" : "新建创作";
+        pageSubtitle.textContent = isHistory
+          ? "查看已生成的作品，继续管理版本"
+          : isFeedback
+            ? "查看听众和协作者从分享页提交的修改意见"
+            : "记录灵感，AI 帮你把想法变成动听的 Demo";
         if (isHistory) renderHistory();
+        if (isFeedback) loadFeedbackInbox();
       }
 
       function startBlankCreation() {
@@ -4121,6 +4523,51 @@
 
       newCreationNav.addEventListener("click", startBlankCreation);
       myCreationsNav.addEventListener("click", () => switchView("history"));
+      feedbackInboxNav.addEventListener("click", () => switchView("feedback"));
+      feedbackFilters.forEach((button) => button.addEventListener("click", () => {
+        feedbackInboxFilter = button.dataset.feedbackFilter;
+        renderFeedbackInbox();
+      }));
+      markAllFeedbackRead.addEventListener("click", async () => {
+        try {
+          await requestJson("/api/feedback/read-all", {
+            method: "PATCH",
+            headers: { "Content-Type": "application/json" },
+            body: "{}"
+          });
+          await loadFeedbackInbox({ showLoading: false });
+        } catch (error) {
+          showMessage(error.message, true);
+        }
+      });
+      feedbackInboxList.addEventListener("click", async (event) => {
+        const openButton = event.target.closest("[data-open-feedback]");
+        if (openButton) {
+          window.open(openButton.dataset.openFeedback, "_blank", "noopener");
+          return;
+        }
+        const readButton = event.target.closest("[data-feedback-read]");
+        if (readButton) {
+          try {
+            await setFeedbackRead(
+              readButton.dataset.token,
+              readButton.dataset.commentId,
+              readButton.dataset.feedbackRead === "true"
+            );
+          } catch (error) {
+            showMessage(error.message, true);
+          }
+          return;
+        }
+        const deleteButton = event.target.closest("[data-feedback-delete]");
+        if (deleteButton) {
+          try {
+            await deleteFeedback(deleteButton.dataset.token, deleteButton.dataset.commentId);
+          } catch (error) {
+            showMessage(error.message, true);
+          }
+        }
+      });
       createFromHistoryButton.addEventListener("click", startBlankCreation);
       adjustVersionButton.addEventListener("click", openAdjustModal);
       adjustCloseButton.addEventListener("click", closeAdjustModal);
@@ -4149,6 +4596,7 @@
 
       syncCreationSettingsUi();
       loadProfile();
+      loadFeedbackInbox({ showLoading: false });
       if (creations.length) {
         renderCreation(creations[0]);
       } else {

@@ -126,6 +126,9 @@ test("首页同时保留功能分支入口和 main 分享能力", async () => {
     'id="shareSource"',
     'id="sharePasswordEnabled"',
     'id="shareAccessCode"',
+    'id="feedbackInboxNav"',
+    'id="feedbackInboxView"',
+    'requestJson("/api/feedback")',
     'noInspirationButton.addEventListener("click", () => startNoInspirationFlow())',
     "noInspirationQuestionsComplete: true",
     "无灵感做歌描述已生成，请确认是否有歌词、歌曲类型和流派方向。",
@@ -648,31 +651,76 @@ test("密码分享的反馈页和评论接口复用解锁 Cookie", async () => {
     rating: 4,
     title: "副歌情绪",
     category: "建议",
+    reviewerName: "小满",
     text: "这里可以再克制一点"
   }, cookie);
   assert.equal(createCommentResponse.status, 200);
   const { comment } = await createCommentResponse.json();
+  assert.equal(comment.reviewerName, "小满");
+  assert.equal(comment.readAt, null);
 
   const feedbackWithCommentResponse = await fetch(`${baseUrl}/s/${token}/feedback`, {
     headers: { Cookie: cookie }
   });
-  assert.match(await feedbackWithCommentResponse.text(), /这里可以再克制一点/);
+  const feedbackWithCommentHtml = await feedbackWithCommentResponse.text();
+  assert.match(feedbackWithCommentHtml, /这里可以再克制一点/);
+  assert.match(feedbackWithCommentHtml, /小满/);
+  assert.match(feedbackWithCommentHtml, /作者会在首页的“收到的反馈”中看到/);
+  assert.doesNotMatch(feedbackWithCommentHtml, /data-delete=/);
+  assert.doesNotMatch(feedbackWithCommentHtml, /清空全部/);
 
-  const lockedDeleteResponse = await deleteJson(
+  const legacyDeleteResponse = await deleteJson(
     `/api/shares/${token}/comments/${comment.id}`
   );
-  assert.equal(lockedDeleteResponse.status, 401);
+  assert.equal(legacyDeleteResponse.status, 404);
 
-  const deleteResponse = await deleteJson(
-    `/api/shares/${token}/comments/${comment.id}`,
-    cookie
-  );
+  const inboxResponse = await fetch(`${baseUrl}/api/feedback`);
+  assert.equal(inboxResponse.status, 200);
+  const inbox = await inboxResponse.json();
+  const inboxGroup = inbox.groups.find((group) => group.token === token);
+  const inboxFeedback = inboxGroup.feedbacks.find((item) => item.id === comment.id);
+  assert.equal(inboxFeedback.reviewerName, "小满");
+  assert.equal(inboxFeedback.readAt, null);
+  assert.ok(inbox.summary.unread >= 1);
+
+  const publicShareResponse = await fetch(`${baseUrl}/api/shares/${token}`, {
+    headers: { Cookie: cookie }
+  });
+  assert.equal(publicShareResponse.status, 200);
+  assert.doesNotMatch(await publicShareResponse.text(), /"readAt"/);
+
+  const markReadResponse = await fetch(`${baseUrl}/api/feedback/${token}/${comment.id}`, {
+    method: "PATCH",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({ read: true })
+  });
+  assert.equal(markReadResponse.status, 200);
+  assert.ok((await markReadResponse.json()).comment.readAt);
+
+  const refreshedInbox = await (await fetch(`${baseUrl}/api/feedback`)).json();
+  assert.ok(refreshedInbox.groups
+    .find((group) => group.token === token)
+    .feedbacks.find((item) => item.id === comment.id).readAt);
+
+  const markUnreadResponse = await fetch(`${baseUrl}/api/feedback/${token}/${comment.id}`, {
+    method: "PATCH",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({ read: false })
+  });
+  assert.equal(markUnreadResponse.status, 200);
+  assert.equal((await markUnreadResponse.json()).comment.readAt, null);
+
+  const markAllReadResponse = await fetch(`${baseUrl}/api/feedback/read-all`, {
+    method: "PATCH",
+    headers: { "Content-Type": "application/json" },
+    body: "{}"
+  });
+  assert.equal(markAllReadResponse.status, 200);
+  assert.ok((await markAllReadResponse.json()).updated >= 1);
+
+  const deleteResponse = await deleteJson(`/api/feedback/${token}/${comment.id}`);
   assert.equal(deleteResponse.status, 200);
   assert.deepEqual(await deleteResponse.json(), { ok: true });
-
-  const clearResponse = await deleteJson(`/api/shares/${token}/comments`, cookie);
-  assert.equal(clearResponse.status, 200);
-  assert.deepEqual(await clearResponse.json(), { ok: true });
 });
 
 test("分享图片不足三张时拒绝创建且不写入记录", async () => {

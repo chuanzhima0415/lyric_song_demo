@@ -523,7 +523,58 @@ function publicShare(share) {
     creatorName: safeShare.creatorName || profile.name,
     creatorRole: safeShare.creatorRole || profile.role,
     creatorAvatarUrl: safeShare.creatorAvatarUrl || profile.avatarUrl,
+    comments: Array.isArray(safeShare.comments)
+      ? safeShare.comments.map(({ readAt: _readAt, ...comment }) => comment)
+      : [],
     requiresPassword: isPasswordProtected(share)
+  };
+}
+
+function feedbackInbox(shares) {
+  const groups = Object.values(shares)
+    .filter((share) => share && typeof share === "object")
+    .map((share) => {
+      const feedbacks = (Array.isArray(share.comments) ? share.comments : [])
+        .map((comment) => ({
+          id: comment.id,
+          timeSeconds: Math.max(0, Math.round(Number(comment.timeSeconds) || 0)),
+          rating: Math.max(1, Math.min(5, Math.round(Number(comment.rating) || 5))),
+          title: comment.title || "修改建议",
+          category: comment.category || "建议",
+          text: comment.text || "",
+          reviewerName: comment.reviewerName || "匿名听众",
+          createdAt: comment.createdAt || share.createdAt || "",
+          readAt: comment.readAt || null
+        }))
+        .sort((a, b) => String(b.createdAt).localeCompare(String(a.createdAt)));
+      if (!feedbacks.length) return null;
+      return {
+        token: share.token,
+        title: share.title || "未命名 Demo",
+        versionLabel: share.versionLabel || "v1",
+        heroImageUrl: share.heroImageUrl || "",
+        isActive: share.is_active !== false,
+        shareUrl: `/s/${encodeURIComponent(share.token)}`,
+        feedbackUrl: `/s/${encodeURIComponent(share.token)}/feedback`,
+        createdAt: share.createdAt || "",
+        latestFeedbackAt: feedbacks[0]?.createdAt || share.createdAt || "",
+        feedbacks
+      };
+    })
+    .filter(Boolean)
+    .sort((a, b) => String(b.latestFeedbackAt).localeCompare(String(a.latestFeedbackAt)));
+  const total = groups.reduce((count, group) => count + group.feedbacks.length, 0);
+  const unread = groups.reduce(
+    (count, group) => count + group.feedbacks.filter((feedback) => !feedback.readAt).length,
+    0
+  );
+  return {
+    summary: {
+      total,
+      unread,
+      shares: groups.length
+    },
+    groups
   };
 }
 
@@ -864,6 +915,7 @@ function makeFeedbackPage(share, shareUrl) {
     title: comment.title || "修改建议",
     category: comment.category || "建议",
     text: comment.text || "",
+    reviewerName: comment.reviewerName || "匿名听众",
     createdAt: comment.createdAt
   })).sort((a, b) => a.timeSeconds - b.timeSeconds));
   const bars = Array.from({ length: 96 }, (_, index) => {
@@ -929,11 +981,12 @@ function makeFeedbackPage(share, shareUrl) {
       .comment-card::before { content: ""; position: absolute; left: -9px; top: 34px; width: 16px; height: 16px; background: #fff; border-left: 1px solid #ded6ff; border-bottom: 1px solid #ded6ff; transform: rotate(45deg); }
       .comment-head { display: flex; justify-content: space-between; gap: 12px; margin-bottom: 8px; }
       .comment-head strong { font-size: 18px; }
+      .reviewer { display: inline-flex; margin-left: 8px; color: #777d92; font-size: 13px; font-weight: 650; }
       .tag { display: inline-flex; margin-left: 8px; padding: 3px 8px; color: #7048ff; background: #f3eeff; border: 1px solid #dacdff; border-radius: 7px; font-size: 13px; }
-      .comment-tools { display: flex; gap: 8px; }
-      .comment-tools button { display: grid; width: 34px; height: 34px; place-items: center; color: #5e6478; background: #fff; border: 0; cursor: pointer; }
       .comment-card p { margin: 0; color: #5a6075; line-height: 1.75; }
       .add-empty { display: grid; min-height: 92px; place-items: center; color: #7048ff; border: 1px dashed #a98bff; border-radius: 14px; cursor: pointer; font-weight: 900; }
+      .feedback-notice { display: none; margin: 14px 22px 0; padding: 12px 14px; color: #256b45; background: #ecf8f1; border: 1px solid #bfe5ce; border-radius: 10px; font-weight: 750; }
+      .feedback-notice.show { display: block; }
       .mini-player { position: sticky; bottom: 12px; display: grid; grid-template-columns: auto 1fr auto; gap: 12px; align-items: center; margin-top: 20px; padding: 14px 18px; }
       .mini-player .play { width: 44px; height: 44px; }
       .mini-title strong, .mini-title span { display: block; }
@@ -990,8 +1043,9 @@ function makeFeedbackPage(share, shareUrl) {
         </div>
         <div class="hint-row">
           <span>点击时间轴上的任意位置，添加你的反馈意见</span>
-          <button id="clearAll" type="button">清空全部</button>
+          <button id="addFeedback" type="button">添加反馈</button>
         </div>
+        <div id="feedbackNotice" class="feedback-notice" role="status" aria-live="polite"></div>
         <div id="feedbackForm" class="feedback-form">
           <div class="time-box" id="selectedTimeLabel">0:00</div>
           <div class="fields">
@@ -1003,6 +1057,7 @@ function makeFeedbackPage(share, shareUrl) {
                 <option value="问题">问题</option>
               </select>
             </div>
+            <input id="feedbackAuthor" maxlength="40" placeholder="你的称呼（选填，默认匿名听众）" />
             <textarea id="feedbackText" maxlength="500" placeholder="写下这一段的修改建议、喜欢/不喜欢的地方..."></textarea>
             <div class="form-actions">
               <button id="cancelFeedback" type="button">取消</button>
@@ -1040,10 +1095,13 @@ function makeFeedbackPage(share, shareUrl) {
       const selectedTimeLabel = document.getElementById("selectedTimeLabel");
       const feedbackTitle = document.getElementById("feedbackTitle");
       const feedbackCategory = document.getElementById("feedbackCategory");
+      const feedbackAuthor = document.getElementById("feedbackAuthor");
       const feedbackText = document.getElementById("feedbackText");
       const feedbackMessage = document.getElementById("feedbackMessage");
+      const feedbackNotice = document.getElementById("feedbackNotice");
       const commentList = document.getElementById("commentList");
       let selectedTime = 0;
+      feedbackAuthor.value = localStorage.getItem("melodyflow.feedback.reviewerName") || "";
 
       function formatTime(seconds) {
         const value = Math.max(0, Math.floor(Number(seconds) || 0));
@@ -1086,6 +1144,7 @@ function makeFeedbackPage(share, shareUrl) {
         feedbackCategory.value = "建议";
         feedbackText.value = "";
         feedbackMessage.textContent = "";
+        feedbackNotice.classList.remove("show");
         form.classList.add("show");
         seekTo(selectedTime);
         feedbackTitle.focus();
@@ -1096,22 +1155,10 @@ function makeFeedbackPage(share, shareUrl) {
       }
       function renderComments() {
         comments.sort((a, b) => a.timeSeconds - b.timeSeconds);
-        commentList.innerHTML = comments.map((comment, index) => '<article class="comment-row"><div class="rail"><span>' + formatTime(comment.timeSeconds) + '</span><button type="button" data-seek="' + comment.timeSeconds + '">' + playIcon(true) + '</button>' + (index < comments.length - 1 ? '<span class="rail-line"></span>' : '') + '</div><div class="comment-card"><div class="comment-head"><div><strong>' + escapeHtml(comment.title || "修改建议") + '</strong><span class="tag">' + escapeHtml(comment.category || "建议") + '</span></div><div class="comment-tools"><button type="button" data-edit="' + comment.id + '">✎</button><button type="button" data-delete="' + comment.id + '">⌫</button></div></div><p>' + escapeHtml(comment.text) + '</p></div></article>').join("") + '<button id="addEmpty" class="add-empty" type="button">＋ 添加反馈（点击时间轴或此处）</button>';
+        commentList.innerHTML = comments.map((comment, index) => '<article class="comment-row"><div class="rail"><span>' + formatTime(comment.timeSeconds) + '</span><button type="button" data-seek="' + comment.timeSeconds + '">' + playIcon(true) + '</button>' + (index < comments.length - 1 ? '<span class="rail-line"></span>' : '') + '</div><div class="comment-card"><div class="comment-head"><div><strong>' + escapeHtml(comment.title || "修改建议") + '</strong><span class="tag">' + escapeHtml(comment.category || "建议") + '</span><span class="reviewer">' + escapeHtml(comment.reviewerName || "匿名听众") + '</span></div></div><p>' + escapeHtml(comment.text) + '</p></div></article>').join("") + '<button id="addEmpty" class="add-empty" type="button">＋ 添加反馈（点击时间轴或此处）</button>';
         document.querySelectorAll("[data-seek]").forEach((button) => button.addEventListener("click", () => {
           seekTo(Number(button.dataset.seek));
           audio?.play();
-        }));
-        document.querySelectorAll("[data-edit]").forEach((button) => button.addEventListener("click", () => {
-          const comment = comments.find((item) => item.id === button.dataset.edit);
-          if (!comment) return;
-          openFormAt(comment.timeSeconds);
-          feedbackTitle.value = comment.title || "";
-          feedbackCategory.value = comment.category || "建议";
-          feedbackText.value = comment.text || "";
-          form.dataset.editing = comment.id;
-        }));
-        document.querySelectorAll("[data-delete]").forEach((button) => button.addEventListener("click", async () => {
-          await deleteComment(button.dataset.delete);
         }));
         document.getElementById("addEmpty").addEventListener("click", () => openFormAt(audio?.currentTime || selectedTime || 0));
       }
@@ -1124,36 +1171,20 @@ function makeFeedbackPage(share, shareUrl) {
           feedbackMessage.textContent = "请填写文字反馈";
           return;
         }
-        const editingId = form.dataset.editing;
-        if (editingId) {
-          await fetch("/api/shares/" + encodeURIComponent(token) + "/comments/" + encodeURIComponent(editingId), { method: "DELETE" });
-        }
-        const payload = { timeSeconds: Math.round(selectedTime), rating: feedbackCategory.value === "喜欢" ? 5 : 4, title: feedbackTitle.value.trim() || "修改建议", category: feedbackCategory.value, text };
+        const reviewerName = feedbackAuthor.value.trim();
+        const payload = { timeSeconds: Math.round(selectedTime), rating: feedbackCategory.value === "喜欢" ? 5 : 4, title: feedbackTitle.value.trim() || "修改建议", category: feedbackCategory.value, reviewerName, text };
         const response = await fetch("/api/shares/" + encodeURIComponent(token) + "/comments", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify(payload) });
         const body = await response.json().catch(() => ({}));
         if (!response.ok) {
           feedbackMessage.textContent = body.message || "保存失败";
           return;
         }
-        if (editingId) comments = comments.filter((comment) => comment.id !== editingId);
         comments.push(body.comment);
-        delete form.dataset.editing;
+        if (reviewerName) localStorage.setItem("melodyflow.feedback.reviewerName", reviewerName);
         form.classList.remove("show");
+        feedbackNotice.textContent = "反馈已提交，作者会在首页的“收到的反馈”中看到。";
+        feedbackNotice.classList.add("show");
         renderComments();
-      }
-      async function deleteComment(id) {
-        const response = await fetch("/api/shares/" + encodeURIComponent(token) + "/comments/" + encodeURIComponent(id), { method: "DELETE" });
-        if (response.ok) {
-          comments = comments.filter((comment) => comment.id !== id);
-          renderComments();
-        }
-      }
-      async function clearAll() {
-        const response = await fetch("/api/shares/" + encodeURIComponent(token) + "/comments", { method: "DELETE" });
-        if (response.ok) {
-          comments = [];
-          renderComments();
-        }
       }
       function togglePlay() {
         if (!audio) return;
@@ -1175,9 +1206,9 @@ function makeFeedbackPage(share, shareUrl) {
         openFormAt(((event.clientX - rect.left) / rect.width) * duration());
       });
       document.getElementById("saveFeedback").addEventListener("click", saveComment);
-      document.getElementById("submitTop").addEventListener("click", saveComment);
+      document.getElementById("submitTop").addEventListener("click", () => openFormAt(audio?.currentTime || selectedTime || 0));
+      document.getElementById("addFeedback").addEventListener("click", () => openFormAt(audio?.currentTime || selectedTime || 0));
       document.getElementById("cancelFeedback").addEventListener("click", () => form.classList.remove("show"));
-      document.getElementById("clearAll").addEventListener("click", clearAll);
       renderTicks();
       renderComments();
       updatePlayback();
@@ -2002,6 +2033,7 @@ app.post("/api/shares/:token/comments", (req, res) => {
   const text = String(req.body?.text || "").trim();
   const title = String(req.body?.title || "修改建议").trim().slice(0, 40) || "修改建议";
   const category = String(req.body?.category || "建议").trim().slice(0, 12) || "建议";
+  const reviewerName = String(req.body?.reviewerName || "").trim().slice(0, 40) || "匿名听众";
   const timeSeconds = Math.max(0, Math.round(Number(req.body?.timeSeconds) || 0));
   if (rawRating < 1 || rawRating > 5) return res.status(400).json({ message: "请先打星" });
   if (!text) return res.status(400).json({ message: "请填写文字反馈" });
@@ -2014,7 +2046,9 @@ app.post("/api/shares/:token/comments", (req, res) => {
     title,
     category,
     text,
-    createdAt: new Date().toISOString()
+    reviewerName,
+    createdAt: new Date().toISOString(),
+    readAt: null
   };
   share.comments = Array.isArray(share.comments) ? share.comments : [];
   share.comments.push(comment);
@@ -2022,20 +2056,47 @@ app.post("/api/shares/:token/comments", (req, res) => {
   res.json({ comment });
 });
 
-app.delete("/api/shares/:token/comments/:commentId", (req, res) => {
-  const shares = readShares();
-  const share = shares[req.params.token];
-  if (!hasShareApiAccess(req, res, share, req.params.token)) return;
-  share.comments = Array.isArray(share.comments) ? share.comments.filter((comment) => comment.id !== req.params.commentId) : [];
-  writeShares(shares);
-  res.json({ ok: true });
+app.get("/api/feedback", (_req, res) => {
+  res.json(feedbackInbox(readShares()));
 });
 
-app.delete("/api/shares/:token/comments", (req, res) => {
+app.patch("/api/feedback/read-all", (req, res) => {
+  const shares = readShares();
+  const readAt = new Date().toISOString();
+  let updated = 0;
+  for (const share of Object.values(shares)) {
+    if (!Array.isArray(share?.comments)) continue;
+    for (const comment of share.comments) {
+      if (comment.readAt) continue;
+      comment.readAt = readAt;
+      updated += 1;
+    }
+  }
+  if (updated) writeShares(shares);
+  res.json({ ok: true, updated, readAt });
+});
+
+app.patch("/api/feedback/:token/:commentId", (req, res) => {
   const shares = readShares();
   const share = shares[req.params.token];
-  if (!hasShareApiAccess(req, res, share, req.params.token)) return;
-  share.comments = [];
+  if (!share) return res.status(404).json({ message: "分享链接不存在" });
+  const comment = (Array.isArray(share.comments) ? share.comments : [])
+    .find((item) => item.id === req.params.commentId);
+  if (!comment) return res.status(404).json({ message: "反馈不存在" });
+  comment.readAt = req.body?.read === false ? null : new Date().toISOString();
+  writeShares(shares);
+  res.json({ ok: true, comment: { id: comment.id, readAt: comment.readAt } });
+});
+
+app.delete("/api/feedback/:token/:commentId", (req, res) => {
+  const shares = readShares();
+  const share = shares[req.params.token];
+  if (!share) return res.status(404).json({ message: "分享链接不存在" });
+  const comments = Array.isArray(share.comments) ? share.comments : [];
+  if (!comments.some((comment) => comment.id === req.params.commentId)) {
+    return res.status(404).json({ message: "反馈不存在" });
+  }
+  share.comments = comments.filter((comment) => comment.id !== req.params.commentId);
   writeShares(shares);
   res.json({ ok: true });
 });
